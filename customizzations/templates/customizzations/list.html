@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Customizations | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Review the personalised product designs saved on your AuraVisual Ecommerce account.{% endblock %}
+{% block og_title %}Customizations | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Review the personalised product designs saved on your AuraVisual Ecommerce account.{% endblock %}
+{% block twitter_title %}Customizations | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Review the personalised product designs saved on your AuraVisual Ecommerce account.{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h2>Your Customizations</h2>
+        <p>Personalised product versions you created.</p>
+    </div>
+
+    {% if customizations %}
+    <div class="row g-4">
+        {% for customization in customizations %}
+        <div class="col-md-6">
+            <div class="info-card">
+                <div class="icon-wrap"><i class="bi bi-palette"></i></div>
+                <h3>{{ customization.product.name }}</h3>
+                <p class="mb-3">Created on {{ customization.created_at|date:"d/m/Y H:i" }}</p>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <img src="{{ customization.front_image.url }}" alt="Front design for {{ customization.product.name }}" class="customization-preview">
+                    </div>
+                    <div class="col-6">
+                        <img src="{{ customization.back_image.url }}" alt="Back design for {{ customization.product.name }}" class="customization-preview">
+                    </div>
+                </div>
+                <p class="mb-0">{{ customization.notes|default:"No notes for this customization." }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-center mb-0">You have not created any customizations yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Logout | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Confirm that you want to sign out of your AuraVisual Ecommerce account.{% endblock %}
+{% block og_title %}Logout | AuraVisual Ecommerce{% endblock %}
+{% block twitter_title %}Logout | AuraVisual Ecommerce{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7 col-lg-5">
+        <div class="auth-card">
+            {% include "accounts/partials/auth_card.html" with title="Confirm logout" %}
+            <p>Do you really want to sign out of your account?</p>
+            <form method="post" action="{% url 'account_logout' %}">
+                {% csrf_token %}
+                <button class="btn-get-started w-100 justify-content-center" type="submit">
+                    <i class="bi bi-box-arrow-right me-2"></i>Logout
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

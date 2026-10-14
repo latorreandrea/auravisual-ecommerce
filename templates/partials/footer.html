@@ -1,0 +1,101 @@
+{% load static %}
+<!-- ======= Footer ======= -->
+<footer id="footer">
+    <!-- waves -->
+    <svg class="footer-waves" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 24 150 28" preserveAspectRatio="none">
+        <defs>
+            <path id="footer-wave-path" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z" />
+        </defs>
+
+        <g class="wave3">
+            <use xlink:href="#footer-wave-path" x="50" y="9" fill="rgb(14, 58, 82)" />
+        </g>
+        <g class="wave2">
+            <use xlink:href="#footer-wave-path" x="50" y="0" fill="rgba(14, 58, 82, 0.2)" />
+        </g>
+        <g class="wave1">
+            <use xlink:href="#footer-wave-path" x="50" y="3" fill="rgba(14, 58, 82, 0.1)" />
+        </g>
+    </svg>
+    <div class="footer-top">
+      <div class="container">
+        <div class="row">
+
+          <!-- COLUMN 1: CALL TO ACTION -->
+          <div class="col-lg-4 col-md-6 mb-4 mb-md-0">
+            <div class="footer-cta">
+              <h3 class="d-flex align-items-center mb-3">
+                <img src="{% static 'img/logo.webp' %}" alt="AuraVisual" class="logo-footer me-2">
+              </h3>
+              <p class="pb-3"><em>Empowering your digital commerce</em></p>
+              <p class="mb-4">Custom NFC cards and QR stands, personalised before purchase and delivered to your door.</p>
+              <a href="{% url 'products:list' %}" class="btn-get-started" aria-label="Go to the shop">
+                <i class="bi bi-bag me-2"></i>Shop the Collection
+              </a>
+              <div class="mt-4 contact-info">
+                <p><i class="bi bi-whatsapp me-2"></i> +45 503 22 726</p>
+                <p><i class="bi bi-envelope me-2"></i> info@auravisual.dk</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMN 2: NAVIGATION -->
+          <div class="col-lg-4 col-md-6 mb-4 mb-md-0">
+            <h4 class="mb-4">Explore Our Site</h4>
+            <div class="row footer-links-grid">
+              <div class="col-12 col-lg-6">
+                <p class="footer-links-group-title">Shop</p>
+                <ul class="footer-links">
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'home:index' %}" aria-label="Go to home page">Home</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'products:list' %}" aria-label="Browse the shop">Shop</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'cart:detail' %}" aria-label="Go to your cart">Cart</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'customizzations:list' %}" aria-label="Go to your customizations">Customizations</a></li>
+                </ul>
+              </div>
+              <div class="col-12 col-lg-6">
+                <p class="footer-links-group-title">Account</p>
+                <ul class="footer-links">
+                  {% if user.is_authenticated %}
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'accounts:profile' %}" aria-label="Go to your profile">Profile</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'orders:list' %}" aria-label="Go to your orders">Orders</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_logout' %}" aria-label="Log out of your account">Logout</a></li>
+                  {% else %}
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_login' %}" aria-label="Log in to your account">Login</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_signup' %}" aria-label="Create an account">Sign up</a></li>
+                  {% endif %}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMN 3: SOCIAL PROOF -->
+          <div class="col-lg-4 col-md-12">
+            <h4 class="mb-4">Our Clients Say</h4>
+            <div class="testimonial-snippet mb-4">
+              <div class="rating mb-2">
+                <i class="bi bi-star-fill text-warning"></i>
+                <i class="bi bi-star-fill text-warning"></i>
+                <i class="bi bi-star-fill text-warning"></i>
+                <i class="bi bi-star-fill text-warning"></i>
+                <i class="bi bi-star-fill text-warning"></i>
+              </div>
+              <p class="testimonial-text fst-italic">"The NFC cards from AuraVisual lifted our whole brand. Quick delivery and a flawless finish."</p>
+              <p class="testimonial-author fw-bold mb-0">&mdash; Mark R.</p>
+            </div>
+            <div class="social-links">
+              <p class="mb-2">Follow us on social media:</p>
+              <a href="https://www.instagram.com/auravisual.labs/" target="_blank" rel="noopener noreferrer" aria-label="Instagram"><i class="bi bi-instagram"></i></a>
+              <a href="https://www.linkedin.com/in/contact-auravisual/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"><i class="bi bi-linkedin"></i></a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="copyright">
+        &copy; Copyright <strong><span>AuraVisual</span></strong>. All Rights Reserved
+      </div>
+    </div>
+</footer><!-- End Footer -->

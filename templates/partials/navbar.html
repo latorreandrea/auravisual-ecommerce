@@ -1,0 +1,79 @@
+{% load static %}
+<!-- ======= Header ======= -->
+<header id="header" class="fixed-top d-flex align-items-center {{ header_class|default:'header-solid' }}">
+    <div class="container d-flex align-items-center justify-content-between">
+
+        <div class="logo">
+            <h1 class="m-0 d-flex align-items-center">
+                <a href="{% url 'home:index' %}" aria-label="AuraVisual home page">
+                    <img src="{% static 'img/logo.webp' %}" alt="AuraVisual" class="logo-img me-2">
+                </a>
+            </h1>
+        </div>
+
+        {% with app=request.resolver_match.app_name url_name=request.resolver_match.url_name %}
+        <nav id="navbar" class="navbar">
+            <ul>
+                <li><a class="nav-link {% if app == 'home' %}active{% endif %}" href="{% url 'home:index' %}" aria-label="Go to home page">Home</a></li>
+                <li><a class="nav-link {% if app == 'products' %}active{% endif %}" href="{% url 'products:list' %}" aria-label="Go to the shop">Shop</a></li>
+                <li>
+                    <a class="nav-link nav-icon-link cart-nav-link {% if app == 'cart' %}active{% endif %}" href="{% url 'cart:detail' %}" aria-label="Cart: {{ cart_summary.count }} item{{ cart_summary.count|pluralize }}">
+                        <span class="cart-icon-wrap">
+                            <i class="bi bi-cart3" aria-hidden="true"></i>
+                            {% if cart_summary.count %}<span class="cart-badge" aria-hidden="true">{{ cart_summary.count }}</span>{% endif %}
+                        </span>
+                    </a>
+                </li>
+                {% if user.is_authenticated %}
+                <li><a class="nav-link {% if app == 'accounts' %}active{% endif %}" href="{% url 'accounts:profile' %}" aria-label="Go to your profile">Profile</a></li>
+                <li><a class="nav-link {% if app == 'orders' %}active{% endif %}" href="{% url 'orders:list' %}" aria-label="Go to your orders">Orders</a></li>
+                <li><a class="nav-link {% if app == 'customizzations' %}active{% endif %}" href="{% url 'customizzations:list' %}" aria-label="Go to your customizations">Customizations</a></li>
+                <li><a class="nav-link" href="{% url 'account_logout' %}" aria-label="Log out of your account">Logout</a></li>
+                {% else %}
+                <li class="dropdown account-dropdown">
+                    <button type="button"
+                            id="account-panel-toggle"
+                            class="account-toggle nav-icon-link {% if url_name == 'account_login' or url_name == 'account_signup' %}active{% endif %}"
+                            data-bs-toggle="dropdown"
+                            data-bs-display="static"
+                            data-bs-auto-close="outside"
+                            aria-haspopup="true"
+                            aria-expanded="false"
+                            aria-controls="account-panel"
+                            aria-label="Open the sign in panel">
+                        <i class="bi bi-person" aria-hidden="true"></i>
+                    </button>
+                    <div id="account-panel" class="dropdown-menu account-panel" aria-labelledby="account-panel-toggle">
+                        <p class="account-panel-greeting mb-1">Welcome</p>
+                        <p class="account-panel-subtitle mb-3">Sign in to your AuraVisual account.</p>
+                        <form method="post" action="{% url 'account_login' %}" class="account-panel-form">
+                            {% csrf_token %}
+                            {% if url_name != 'account_login' and url_name != 'account_signup' %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            {% endif %}
+                            <div class="mb-2">
+                                <label class="form-label" for="account-panel-login">Email or username</label>
+                                <input type="text" class="form-control form-control-sm" id="account-panel-login" name="login" autocomplete="username" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="account-panel-password">Password</label>
+                                <input type="password" class="form-control form-control-sm" id="account-panel-password" name="password" autocomplete="current-password" required>
+                            </div>
+                            <button class="btn-get-started account-panel-submit w-100 justify-content-center" type="submit">
+                                <i class="bi bi-box-arrow-in-right me-2"></i>Sign in
+                            </button>
+                        </form>
+                        <p class="account-panel-footer mb-0">
+                            Don't have an account?
+                            <a href="{% url 'account_signup' %}" class="account-panel-signup">Sign up</a>
+                        </p>
+                    </div>
+                </li>
+                {% endif %}
+            </ul>
+            <i class="bi bi-list mobile-nav-toggle" role="button" tabindex="0" aria-label="Toggle navigation"></i>
+        </nav><!-- .navbar -->
+        {% endwith %}
+
+    </div>
+</header><!-- End Header -->

@@ -1,0 +1,18 @@
+{% comment %}
+Reusable heading block for the account / allauth pages of this project.
+
+The surrounding markup is the `.auth-card` container from `static/css/style.css`:
+
+    <div class="auth-card">
+        {% include "accounts/partials/auth_card.html" with title="Sign in" subtitle="Use your AuraVisual account." %}
+        <form method="post" action="...">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button class="btn-get-started w-100 justify-content-center" type="submit">Login</button>
+        </form>
+    </div>
+
+Expected context: `title` (required), `subtitle` (optional).
+{% endcomment %}
+<h1 class="h4 mb-3">{{ title|default:"Account" }}</h1>
+{% if subtitle %}<p class="text-muted mb-2">{{ subtitle }}</p>{% endif %}

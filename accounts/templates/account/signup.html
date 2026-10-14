@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Sign up | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Create your AuraVisual Ecommerce account.{% endblock %}
+{% block og_title %}Sign up | AuraVisual Ecommerce{% endblock %}
+{% block twitter_title %}Sign up | AuraVisual Ecommerce{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-5">
+        <div class="auth-card">
+            {% include "accounts/partials/auth_card.html" with title="Sign up" %}
+            <form method="post" action="{% url 'account_signup' %}">
+                {% csrf_token %}
+                {{ form.as_p }}
+                <button class="btn-get-started w-100 justify-content-center" type="submit">
+                    <i class="bi bi-person-plus me-2"></i>Create account
+                </button>
+            </form>
+            <p class="mt-3 mb-0">
+                Already have an account? <a href="{% url 'account_login' %}">Sign in</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Profile | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Manage your AuraVisual Ecommerce profile, shipping addresses and order history.{% endblock %}
+{% block og_title %}Profile | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Manage your AuraVisual Ecommerce profile, shipping addresses and order history.{% endblock %}
+{% block twitter_title %}Profile | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Manage your AuraVisual Ecommerce profile, shipping addresses and order history.{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h2>User Profile</h2>
+        <p>Your shipping addresses and order history.</p>
+    </div>
+
+    <h3 class="mb-3">Shipping addresses</h3>
+    {% if addresses %}
+    <div class="row g-3 mb-5">
+        {% for address in addresses %}
+        <div class="col-md-6">
+            <div class="info-card">
+                <div class="icon-wrap"><i class="bi bi-geo-alt"></i></div>
+                <h3>{{ address.full_name }}</h3>
+                <p class="mb-1">{{ address.line_1 }}{% if address.line_2 %}, {{ address.line_2 }}{% endif %}</p>
+                <p class="mb-1">{{ address.postal_code }} {{ address.city }}</p>
+                <p class="mb-0">{{ address.country }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="mb-5">No shipping addresses saved on your account.</p>
+    {% endif %}
+
+    <h3 class="mb-3">Order history</h3>
+    {% if orders %}
+    <div class="row g-3">
+        {% for order in orders %}
+        <div class="col-12">
+            <div class="info-card d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                    <h3 class="mb-1">Order #{{ order.id }}</h3>
+                    <p class="mb-0">Placed on {{ order.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+                <span class="product-meta">
+                    <i class="bi bi-truck me-2"></i>{{ order.get_status_display }}
+                </span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="mb-0">You have not placed any orders yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Cart | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Review the items in your AuraVisual Ecommerce cart before checkout.{% endblock %}
+{% block og_title %}Cart | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Review the items in your AuraVisual Ecommerce cart before checkout.{% endblock %}
+{% block twitter_title %}Cart | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Review the items in your AuraVisual Ecommerce cart before checkout.{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h2>Your Cart</h2>
+        <p>Review your items before checkout.</p>
+    </div>
+
+    {% if cart_summary.items %}
+    <div class="row g-3">
+        {% for item in cart_summary.items %}
+        <div class="col-12">
+            <div class="info-card d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                    <h3 class="mb-1">{{ item.name }}</h3>
+                    <p class="mb-0">Quantity: {{ item.quantity }} &middot; Unit price: &euro; {{ item.price }}</p>
+                </div>
+                <div class="text-end">
+                    <p class="product-price mb-2">&euro; {{ item.line_total }}</p>
+                    <form action="{% url 'cart:remove' item.product_id %}" method="post" class="mb-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-dash-circle me-2"></i>Remove one
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mt-4">
+        <p class="product-price mb-0">Total: &euro; {{ cart_summary.total }}</p>
+        <form action="{% url 'cart:clear' %}" method="post" class="mb-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary">
+                <i class="bi bi-trash me-2"></i>Clear cart
+            </button>
+        </form>
+    </div>
+    {% else %}
+    <p class="text-center">Your cart is empty.</p>
+    <div class="text-center">
+        <a href="{% url 'products:list' %}" class="btn-get-started" aria-label="Go to the shop">
+            <i class="bi bi-bag me-2"></i>Go to shop
+        </a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

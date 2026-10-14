@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Home | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}AuraVisual Ecommerce: shop custom NFC cards and QR stands, personalised before purchase and delivered to your door.{% endblock %}
+{% block og_title %}Home | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}AuraVisual Ecommerce: shop custom NFC cards and QR stands, personalised before purchase and delivered to your door.{% endblock %}
+{% block twitter_title %}Home | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}AuraVisual Ecommerce: shop custom NFC cards and QR stands, personalised before purchase and delivered to your door.{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h2>Welcome to AuraVisual Ecommerce</h2>
+        <p>Custom NFC cards and QR stands, personalised before purchase.</p>
+    </div>
+
+    <div class="text-center mb-5">
+        <a href="{% url 'products:list' %}" class="btn-get-started pulse-animation" aria-label="Go to the shop">
+            <i class="bi bi-bag me-2"></i>Go to shop
+        </a>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="info-card text-center">
+                <div class="icon-wrap"><i class="bi bi-grid"></i></div>
+                <h3>Browse products</h3>
+                <p>Explore our NFC cards, QR stands and customizable physical products.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="info-card text-center">
+                <div class="icon-wrap"><i class="bi bi-palette"></i></div>
+                <h3>Personalise</h3>
+                <p>Attach your own front and back graphics to every product before checkout.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="info-card text-center">
+                <div class="icon-wrap"><i class="bi bi-truck"></i></div>
+                <h3>Track your orders</h3>
+                <p>Follow the status of your orders from preparation to delivery.</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

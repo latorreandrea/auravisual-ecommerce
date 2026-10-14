@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Orders | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Track the status of your AuraVisual Ecommerce orders.{% endblock %}
+{% block og_title %}Orders | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Track the status of your AuraVisual Ecommerce orders.{% endblock %}
+{% block twitter_title %}Orders | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Track the status of your AuraVisual Ecommerce orders.{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h2>Your Orders</h2>
+        <p>Track the status of every order you placed.</p>
+    </div>
+
+    {% if orders %}
+    <div class="row g-3">
+        {% for order in orders %}
+        <div class="col-12">
+            <div class="info-card d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                    <h3 class="mb-1">Order #{{ order.id }}</h3>
+                    <p class="mb-0">Placed on {{ order.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+                <span class="product-meta">
+                    <i class="bi bi-truck me-2"></i>{{ order.get_status_display }}
+                </span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-center mb-0">No orders created yet.</p>
+    {% endif %}
+</section>
+{% endblock %}
