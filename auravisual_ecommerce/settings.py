@@ -36,7 +36,7 @@ INSTALLED_APPS = [
     "home",
     "products",
     "accounts",
-    "customizzations",
+    "customization",
     "cart",
     "orders",
     # Third-party apps: keep them below the local ones so template overrides work.
@@ -118,6 +118,39 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# ---------------------------------------------------------------------------
+# Product mockups and customer customizations
+# ---------------------------------------------------------------------------
+# Admin mockups are optimised on upload with Pillow: resized, converted to
+# WebP and stripped of metadata. Background removal is intentionally not done
+# server-side: the admin uploads a transparent PNG when one is needed.
+PRODUCT_MOCKUP_MAX_DIMENSION = int(os.environ.get("PRODUCT_MOCKUP_MAX_DIMENSION", "2400"))
+PRODUCT_MOCKUP_WEBP_QUALITY = int(os.environ.get("PRODUCT_MOCKUP_WEBP_QUALITY", "90"))
+PRODUCT_MOCKUP_MAX_UPLOAD_MB = int(os.environ.get("PRODUCT_MOCKUP_MAX_UPLOAD_MB", "20"))
+PRODUCT_MOCKUP_MAX_PIXELS = int(os.environ.get("PRODUCT_MOCKUP_MAX_PIXELS", "40000000"))
+
+# Customer uploads: the per-image cap is a hard limit, while each
+# CustomizationZone can only lower it.
+CUSTOMIZATION_MAX_UPLOAD_MB = int(os.environ.get("CUSTOMIZATION_MAX_UPLOAD_MB", "10"))
+CUSTOMIZATION_MAX_TOTAL_UPLOAD_MB = int(os.environ.get("CUSTOMIZATION_MAX_TOTAL_UPLOAD_MB", "50"))
+CUSTOMIZATION_MAX_IMAGE_PIXELS = int(os.environ.get("CUSTOMIZATION_MAX_IMAGE_PIXELS", "40000000"))
+CUSTOMIZATION_PREVIEW_MAX_BYTES = int(
+    os.environ.get("CUSTOMIZATION_PREVIEW_MAX_BYTES", str(100 * 1024))
+)
+CUSTOMIZATION_PREVIEW_WEBP_QUALITY = int(
+    os.environ.get("CUSTOMIZATION_PREVIEW_WEBP_QUALITY", "80")
+)
+CUSTOMIZATION_PRINT_DPI = int(os.environ.get("CUSTOMIZATION_PRINT_DPI", "300"))
+CUSTOMIZATION_PRINT_ASYNC = os.environ.get("CUSTOMIZATION_PRINT_ASYNC", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+# Shared secret used by the external checkout/cart app when notifying that an
+# order has been paid. Keep it empty to disable the webhook.
+CUSTOMIZATION_PRINT_WEBHOOK_SECRET = os.environ.get("CUSTOMIZATION_PRINT_WEBHOOK_SECRET", "")
 
 # Cache-busting version appended to static assets from the templates
 # (see auravisual_ecommerce/context.py and {% static %}?v={{ ASSET_VERSION }}).
