@@ -5,6 +5,29 @@ from django.core.exceptions import ValidationError
 
 ALLOWED_IMAGE_FORMATS = {"PNG", "JPEG", "WEBP"}
 
+EXIF_ORIENTATION_TAG = 0x0112
+# EXIF orientations 5-8 rotate the image by 90 or 270 degrees, which swaps its
+# stored width and height. Browsers apply that rotation automatically, so the
+# server must use the same dimensions or the saved artwork would be distorted.
+TRANSPOSED_ORIENTATIONS = {5, 6, 7, 8}
+
+
+def image_orientation(image):
+    try:
+        orientation = image.getexif().get(EXIF_ORIENTATION_TAG, 1) or 1
+        return int(orientation)
+    except (AttributeError, OSError, SyntaxError, TypeError, ValueError):
+        return 1
+
+
+def oriented_dimensions(image):
+    """Return ``(width, height)`` as displayed after EXIF orientation."""
+
+    width, height = image.size
+    if image_orientation(image) in TRANSPOSED_ORIENTATIONS:
+        return height, width
+    return width, height
+
 
 def bytes_to_mb(num_bytes):
     return f"{num_bytes / (1024 * 1024):g} MB"
@@ -55,22 +78,30 @@ def validate_image_upload(
         uploaded_file.seek(0)
         with Image.open(uploaded_file) as image:
             image_format = (image.format or "").upper()
-            width, height = image.size
-
             if image_format not in allowed_formats:
                 raise ValidationError(
                     f"Unsupported {label} format. Use PNG, JPEG or WebP."
                 )
-            if width <= 0 or height <= 0:
-                raise ValidationError(f"The uploaded {label} has invalid dimensions.")
-            if width * height > max_pixels:
-                raise ValidationError(
-                    f"The {label} is too large ({width}x{height} pixels). "
-                    "Please resize it before uploading."
-                )
+            # verify() must run before any exif/dimension access loads pixels.
             image.verify()
+
+        uploaded_file.seek(0)
+        with Image.open(uploaded_file) as image:
+            width, height = oriented_dimensions(image)
+
+        if width <= 0 or height <= 0:
+            raise ValidationError(f"The uploaded {label} has invalid dimensions.")
+        if width * height > max_pixels:
+            raise ValidationError(
+                f"The {label} is too large ({width}x{height} pixels). "
+                "Please resize it before uploading."
+            )
     except ValidationError:
         raise
+    except Image.DecompressionBombError as exc:
+        raise ValidationError(
+            f"The {label} has too many pixels. Please resize it before uploading."
+        ) from exc
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
         raise ValidationError(
             f"The uploaded {label} is not a valid image. Use PNG, JPEG or WebP."

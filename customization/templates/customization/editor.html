@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Customize {{ product.title }} | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Upload your artwork and position it on {{ product.title }} before adding the personalised product to your cart.{% endblock %}
+{% block og_title %}Customize {{ product.title }} | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Upload your artwork and position it on {{ product.title }} before adding the personalised product to your cart.{% endblock %}
+{% block twitter_title %}Customize {{ product.title }} | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Upload your artwork and position it on {{ product.title }} before adding the personalised product to your cart.{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/customization-editor.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<section id="customization-editor">
+    <div class="section-title">
+        <h2>Customize {{ product.title }}</h2>
+        <p>{{ product.description|default:"Upload an image for each area, then drag it to position it exactly where you want it." }}</p>
+    </div>
+
+    {% if editor_payload.views %}
+    <form id="customization-form" action="{{ editor_payload.save_url }}" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="product_id" value="{{ product.pk }}">
+        <input type="hidden" name="draft_id" value="{{ editor_payload.draft_id }}">
+        <input type="hidden" name="configuration" id="configuration-input">
+        <div id="editor-file-inputs" hidden></div>
+
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="info-card">
+                    <div id="editor-view-tabs" class="editor-view-tabs" role="tablist" aria-label="Product views"></div>
+
+                    <div class="editor-stage-wrap">
+                        <div id="editor-stage" class="editor-stage">
+                            <img id="editor-mockup" src="" alt="" class="editor-mockup">
+                            <div id="editor-zones" class="editor-zones"></div>
+                        </div>
+                    </div>
+
+                    <p class="small text-muted mb-0 mt-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Click an area to upload an image, then drag it to reposition it. The order of the saved views is preserved.
+                    </p>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="info-card editor-sidebar">
+                    <h3>Selected area</h3>
+                    <p id="editor-zone-name" class="fw-semibold mb-2">Select an area on the product.</p>
+
+                    <button type="button" id="editor-upload-button" class="btn-get-started w-100 justify-content-center" disabled>
+                        <i class="bi bi-upload me-2"></i>Choose image
+                    </button>
+
+                    <div id="editor-controls" class="mt-4 d-none">
+                        <div class="mb-3" id="editor-scale-row">
+                            <label for="editor-scale" class="form-label d-flex justify-content-between">
+                                <span>Size</span>
+                                <span id="editor-scale-value">100%</span>
+                            </label>
+                            <input type="range" id="editor-scale" class="form-range" min="25" max="100" step="1" value="100">
+                        </div>
+                        <div class="mb-3" id="editor-rotation-row">
+                            <label for="editor-rotation" class="form-label d-flex justify-content-between">
+                                <span>Rotation</span>
+                                <span id="editor-rotation-value">0&deg;</span>
+                            </label>
+                            <input type="range" id="editor-rotation" class="form-range" min="-180" max="180" step="1" value="0">
+                        </div>
+                        <button type="button" id="editor-remove-image" class="btn btn-sm btn-outline-danger w-100">
+                            <i class="bi bi-x-circle me-2"></i>Remove image
+                        </button>
+                    </div>
+
+                    <div id="editor-error" class="alert alert-danger d-none mt-3 mb-0" role="alert"></div>
+
+                    <hr>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" id="editor-save" class="btn-get-started justify-content-center">
+                            <i class="bi bi-check2-circle me-2"></i>Save customization
+                        </button>
+                        {% if draft %}
+                        <a href="{% url 'customization:draft_detail' draft.pk %}" class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                        {% else %}
+                        <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">
+                            Back to shop
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+    {{ editor_payload|json_script:"customization-editor-data" }}
+    {% else %}
+    <div class="text-center">
+        <p>This product cannot be customized yet.</p>
+        <a href="{% url 'products:list' %}" class="btn-get-started">
+            <i class="bi bi-arrow-left me-2"></i>Back to shop
+        </a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_js %}
+{% if editor_payload.views %}
+<script src="{% static 'js/customization-editor.js' %}?v={{ ASSET_VERSION }}" defer></script>
+{% endif %}
+{% endblock %}

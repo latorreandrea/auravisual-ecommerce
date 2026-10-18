@@ -20,6 +20,7 @@ The core goal is to let customers personalize the products before purchasing the
 - [Environment Configuration](#environment-configuration)
 - [Usage](#usage)
 - [Authentication](#authentication)
+- [Customization Workflow](#customization-workflow)
 - [Cart and Orders](#cart-and-orders)
 - [Frontend Structure](#frontend-structure)
 - [API Roadmap (Django Ninja + Stripe)](#api-roadmap-django-ninja--stripe)
@@ -61,7 +62,11 @@ Customers can:
 - **Home app** for index and entry pages.
 - **Products app** for base products and stock handling.
 - **Accounts app** for profile, shipping data and order history.
-- **Customizzations app** for customer visual customization workflows.
+- **Customization app** for customer visual customization workflows:
+  - per-product views (front/back), printable zones and mockups managed in admin;
+  - drag/resize/rotate editor with PNG, JPEG and WebP uploads;
+  - saved drafts, optimized WebP previews and cart integration;
+  - print-ready PNG (single view) or multi-page PDF (multiple views) output.
 - **Cart app** for cart management and global cart context.
 - **Orders app** for checkout domain and order state management:
   - `Order received`
@@ -78,7 +83,7 @@ Customers can:
 - `home`: landing/index views.
 - `products`: product model, listing, stock info.
 - `accounts`: user profile and shipping address domain.
-- `customizzations`: user-to-product customization entities.
+- `customization`: customization views, zones, drafts, previews and print output.
 - `cart`: cart logic, add/remove/clear actions, global context processor.
 - `orders`: order model and user order list.
 
@@ -139,6 +144,19 @@ Always available:
 - `ASSET_VERSION` (optional, defaults to `1`): cache-busting token appended to
   `css/style.css` and `js/main.js` in the templates
 
+Customization uploads and print output:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CUSTOMIZATION_MAX_UPLOAD_MB` | `10` | Hard per-image cap; each zone can only lower it |
+| `CUSTOMIZATION_MAX_TOTAL_UPLOAD_MB` | `50` | Combined limit for one save request |
+| `CUSTOMIZATION_MAX_IMAGE_PIXELS` | `40000000` | Rejects images whose display dimensions exceed this |
+| `CUSTOMIZATION_PREVIEW_MAX_BYTES` | `102400` | Target maximum size of the generated WebP preview |
+| `CUSTOMIZATION_PREVIEW_WEBP_QUALITY` | `80` | Starting WebP quality; reduced automatically if needed |
+| `CUSTOMIZATION_PRINT_DPI` | `300` | DPI metadata written into print files |
+| `CUSTOMIZATION_PRINT_ASYNC` | `1` | Generate print files in a background thread |
+| `CUSTOMIZATION_PRINT_WEBHOOK_SECRET` | empty | Shared secret for the order-paid webhook; empty disables it |
+
 Example:
 
 ```bash
@@ -190,6 +208,8 @@ mode.
    - `/accounts/login/` authentication pages
    - `/cart/` cart details
    - `/orders/` user order list
+   - `/customization/` saved customization drafts
+   - `/customization/product/<slug>/` customization editor
 
 ---
 
@@ -213,6 +233,39 @@ Supported flows:
 - registration
 - login/logout
 - password change
+
+---
+
+## Customization Workflow
+
+1. In admin, create the product, one or more **product views** and their
+   **customization zones**. A view needs a mockup image plus `canvas_width_px`
+   and `canvas_height_px`; zones define printable x/y/width/height in canvas
+   pixels, rotation/scaling rules and an optional lower upload cap.
+2. The customer opens `/customization/product/<slug>/`, chooses a zone and
+   uploads a PNG, JPEG or WebP image. The browser editor checks the same format,
+   per-image byte, pixel and zone limits as the server before submitting.
+3. Saving validates every transform, stores the upload under the draft UUID,
+   renders a compressed WebP preview and deletes assets that are no longer
+   referenced. EXIF orientation is applied consistently by the browser and the
+   server renderer.
+4. Draft previews appear in `/customization/` and can be added to the cart with
+   `draft_id`; the cart line is keyed by `<product_id>:<draft_id>` so the same
+   product can be ordered with different artwork.
+5. When checkout reports a paid order, POST the draft IDs to
+   `/customization/webhooks/order-paid/` with the shared secret in the
+   `X-Webhook-Token` header:
+
+   ```json
+   {"draft_ids": ["<uuid>", "<uuid>"]}
+   ```
+
+   The endpoint queues print-file generation and answers `202`. A single view
+   produces a PNG; multiple views produce a multi-page PDF. Set
+   `CUSTOMIZATION_PRINT_ASYNC=0` to render synchronously.
+
+Draft detail and payload endpoints are owner-only; the webhook is CSRF-exempt
+but requires the configured token (compared in constant time).
 
 ---
 
@@ -258,7 +311,7 @@ its own markup:
 | `products` | `products/templates/products/list.html` |
 | `cart` | `cart/templates/cart/detail.html` |
 | `orders` | `orders/templates/orders/list.html` |
-| `customizzations` | `customizzations/templates/customizzations/list.html` |
+| `customization` | `customization/templates/customization/*.html` |
 | `accounts` | `accounts/templates/accounts/*.html` and `accounts/templates/account/*.html` |
 
 The `templates/` directory at the project root only holds what belongs to no
@@ -322,16 +375,20 @@ Recommended best practices for the next step:
 Baseline checks:
 
 ```bash
-python manage.py makemigrations
+python manage.py makemigrations --check --dry-run
 python manage.py migrate
 python manage.py check
 ```
 
-Optional:
+Tests (temporary media root, no external services required):
 
 ```bash
 python manage.py test
 ```
+
+The `customization` suite covers upload limits and formats, EXIF orientation,
+draft save/replace/delete asset cleanup, preview generation, cart integration,
+single-view PNG and multi-view PDF output, and webhook authentication.
 
 ---
 
@@ -339,8 +396,8 @@ python manage.py test
 
 - Add Django Ninja API app and payment endpoints.
 - Integrate Stripe checkout and webhook pipeline.
-- Add product customization preview rendering pipeline.
 - Add shipment tracking integration.
+- Add a customer-facing order detail page with print-file download.
 
 ---
 

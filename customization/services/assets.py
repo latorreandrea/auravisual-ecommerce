@@ -8,7 +8,12 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 
-from auravisual_ecommerce.imaging import bytes_to_mb, upload_size, validate_image_upload
+from auravisual_ecommerce.imaging import (
+    bytes_to_mb,
+    oriented_dimensions,
+    upload_size,
+    validate_image_upload,
+)
 
 EXTENSION_BY_FORMAT = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}
 
@@ -46,12 +51,26 @@ def save_asset(draft, uploaded_file, image_info):
     return saved_path, default_storage.url(saved_path)
 
 
+def delete_assets(paths):
+    """Remove draft-scoped asset files that are no longer referenced."""
+
+    for path in paths:
+        if not path or not path.startswith("customization/drafts/") or ".." in path:
+            continue
+        try:
+            if default_storage.exists(path):
+                default_storage.delete(path)
+        except (OSError, ValueError):
+            # Storage cleanup must never break saving a customization.
+            pass
+
+
 def asset_dimensions(path):
     with default_storage.open(path, "rb") as stored_file:
         payload = stored_file.read()
 
     try:
         with Image.open(io.BytesIO(payload)) as image:
-            return image.size
+            return oriented_dimensions(image)
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise ValidationError("A previously uploaded image is no longer readable.") from exc

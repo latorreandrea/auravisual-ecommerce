@@ -20,18 +20,44 @@
         {% for item in cart_summary.items %}
         <div class="col-12">
             <div class="info-card d-flex flex-wrap align-items-center justify-content-between gap-3">
-                <div>
-                    <h3 class="mb-1">{{ item.name }}</h3>
-                    <p class="mb-0">Quantity: {{ item.quantity }} &middot; Unit price: &euro; {{ item.price }}</p>
+                <div class="d-flex align-items-center gap-3">
+                    {% if item.preview_url %}
+                    <img src="{{ item.preview_url }}" alt="Preview of {{ item.name }}" class="customization-thumb" width="96" height="96">
+                    {% endif %}
+                    <div>
+                        <h3 class="mb-1">{{ item.name }}</h3>
+                        <p class="mb-0">Quantity: {{ item.quantity }} &middot; Unit price: &euro; {{ item.price }}</p>
+                        {% if item.draft_missing %}
+                        <p class="mb-0 small text-danger">
+                            <i class="bi bi-exclamation-triangle me-1"></i>This customization is no longer available.
+                        </p>
+                        {% elif item.draft_id %}
+                        <p class="mb-0 small">
+                            <i class="bi bi-palette me-1"></i>Customized version
+                            &middot; <a href="{{ item.draft_detail_url }}">View details</a>
+                        </p>
+                        {% endif %}
+                    </div>
                 </div>
                 <div class="text-end">
                     <p class="product-price mb-2">&euro; {{ item.line_total }}</p>
-                    <form action="{% url 'cart:remove' item.product_id %}" method="post" class="mb-0">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-dash-circle me-2"></i>Remove one
-                        </button>
-                    </form>
+                    <div class="d-flex flex-wrap justify-content-end gap-2">
+                        {% if item.draft_id %}
+                        <a href="{% url 'customization:editor' item.slug %}?draft={{ item.draft_id }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil-square me-2"></i>Edit design
+                        </a>
+                        {% else %}
+                        <a href="{{ item.customize_url }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-palette me-2"></i>Customize
+                        </a>
+                        {% endif %}
+                        <form action="{% url 'cart:remove' item.line_key %}" method="post" class="mb-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-dash-circle me-2"></i>Remove one
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

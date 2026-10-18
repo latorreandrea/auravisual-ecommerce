@@ -9,6 +9,7 @@ from django.core.files.storage import default_storage
 
 from .assets import (
     asset_dimensions,
+    delete_assets,
     is_draft_asset_path,
     save_asset,
     validate_asset_file,
@@ -92,7 +93,11 @@ def _normalize_transform(raw_transform, zone, natural_width, natural_height):
     x = min(max(x, float(zone.x)), max_x)
     y = min(max(y, float(zone.y)), max_y)
 
-    rotation = _as_float(raw_transform.get("rotation"), "rotation", 0.0)
+    rotation = _as_float(
+        raw_transform.get("rotation"),
+        "rotation",
+        float(zone.rotation or 0.0),
+    )
     if zone.allow_rotation:
         rotation = ((rotation + 180.0) % 360.0) - 180.0
     else:
@@ -152,7 +157,13 @@ def build_configuration(product, raw, draft, uploaded_files):
             seen_zones.add(zone_id)
 
             uploaded_file = uploaded_files.get(zone_id)
-            existing_path = (raw_zone.get("asset_path") or "").strip()
+            raw_existing_path = raw_zone.get("asset_path")
+            if raw_existing_path is None:
+                existing_path = ""
+            elif isinstance(raw_existing_path, str):
+                existing_path = raw_existing_path.strip()
+            else:
+                raise ValidationError("Invalid existing image reference.")
 
             if uploaded_file is not None:
                 image_info = validate_asset_file(uploaded_file, zone)
@@ -188,46 +199,61 @@ def build_configuration(product, raw, draft, uploaded_files):
     if not entries:
         raise ValidationError("Add at least one image to the product.")
 
-    grouped = {}
+    # Validate every transform before writing any file, so a bad payload cannot
+    # leave partially saved assets behind.
     for entry in entries:
-        view = entry["view"]
-        zone = entry["zone"]
-
-        if entry["source"] == "upload":
-            asset_path, asset_url = save_asset(draft, entry["uploaded_file"], entry["image_info"])
-            original_name = entry["original_name"] or getattr(entry["uploaded_file"], "name", "")
-        else:
-            asset_path = entry["existing_path"]
-            asset_url = default_storage.url(asset_path)
-            original_name = entry["original_name"]
-
-        transform = _normalize_transform(
+        entry["transform"] = _normalize_transform(
             entry["raw_transform"],
-            zone,
+            entry["zone"],
             entry["natural_width"],
             entry["natural_height"],
         )
 
-        view_entry = grouped.setdefault(
-            view.pk,
-            {
-                "product_view_id": view.pk,
-                "view_name": view.name,
-                "zones": [],
-            },
-        )
-        view_entry["zones"].append(
-            {
-                "zone_id": zone.pk,
-                "zone_name": zone.name,
-                "asset_path": asset_path,
-                "asset_url": asset_url,
-                "original_name": Path(original_name or "").name,
-                "natural_width": entry["natural_width"],
-                "natural_height": entry["natural_height"],
-                "transform": transform,
-            }
-        )
+    grouped = {}
+    saved_asset_paths = []
+    try:
+        for entry in entries:
+            view = entry["view"]
+            zone = entry["zone"]
+            transform = entry["transform"]
+
+            if entry["source"] == "upload":
+                asset_path, asset_url = save_asset(
+                    draft, entry["uploaded_file"], entry["image_info"]
+                )
+                saved_asset_paths.append(asset_path)
+                original_name = entry["original_name"] or getattr(
+                    entry["uploaded_file"], "name", ""
+                )
+            else:
+                asset_path = entry["existing_path"]
+                asset_url = default_storage.url(asset_path)
+                original_name = entry["original_name"]
+
+            view_entry = grouped.setdefault(
+                view.pk,
+                {
+                    "product_view_id": view.pk,
+                    "view_name": view.name,
+                    "zones": [],
+                },
+            )
+            view_entry["zones"].append(
+                {
+                    "zone_id": zone.pk,
+                    "zone_name": zone.name,
+                    "asset_path": asset_path,
+                    "asset_url": asset_url,
+                    "original_name": Path(original_name or "").name,
+                    "natural_width": entry["natural_width"],
+                    "natural_height": entry["natural_height"],
+                    "transform": transform,
+                }
+            )
+    except Exception:
+        # A storage error halfway through must not leave unreferenced uploads.
+        delete_assets(saved_asset_paths)
+        raise
 
     ordered = sorted(
         grouped.values(),
@@ -237,21 +263,3 @@ def build_configuration(product, raw, draft, uploaded_files):
         ),
     )
     return {"views": ordered}
-
-    x = min(max(x, float(zone.x)), max_x)
-    y = min(max(y, float(zone.y)), max_y)
-
-    rotation = _as_float(raw_transform.get("rotation"), "rotation", 0.0)
-    if zone.allow_rotation:
-        rotation = ((rotation + 180.0) % 360.0) - 180.0
-    else:
-        rotation = 0.0
-
-    return {
-        "x": round(x, 2),
-        "y": round(y, 2),
-        "width": round(width, 2),
-        "height": round(height, 2),
-        "scale": round(width / natural_width, 4),
-        "rotation": round(rotation, 2),
-    }

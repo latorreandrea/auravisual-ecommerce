@@ -2378,8 +2378,27 @@ html {
 /* --- Customizations ------------------------------------------------------- */
 .customization-preview {
   width: 100%;
-  max-height: 160px;
+  max-height: 260px;
   object-fit: cover;
   border-radius: 12px;
   border: 1px solid rgba(14, 58, 82, 0.08);
+  background: #f8f9fa;
+}
+
+.placeholder-preview {
+  min-height: 160px;
+  border-style: dashed;
+}
+
+.customization-thumb {
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(14, 58, 82, 0.12);
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.editor-sidebar .btn-get-started,
+.editor-sidebar .btn {
+  white-space: normal;
 }

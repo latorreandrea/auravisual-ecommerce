@@ -15,29 +15,46 @@
         <p>Personalised product versions you created.</p>
     </div>
 
-    {% if customizations %}
+    {% if drafts %}
     <div class="row g-4">
-        {% for customization in customizations %}
+        {% for draft in drafts %}
         <div class="col-md-6">
-            <div class="info-card">
+            <div class="info-card h-100 d-flex flex-column">
                 <div class="icon-wrap"><i class="bi bi-palette"></i></div>
-                <h3>{{ customization.product.name }}</h3>
-                <p class="mb-3">Created on {{ customization.created_at|date:"d/m/Y H:i" }}</p>
-                <div class="row g-2 mb-3">
-                    <div class="col-6">
-                        <img src="{{ customization.front_image.url }}" alt="Front design for {{ customization.product.name }}" class="customization-preview">
-                    </div>
-                    <div class="col-6">
-                        <img src="{{ customization.back_image.url }}" alt="Back design for {{ customization.product.name }}" class="customization-preview">
-                    </div>
+                <h3>{{ draft.product.title }}</h3>
+                <p class="mb-3">Last updated {{ draft.updated_at|date:"d/m/Y H:i" }}</p>
+                {% if draft.preview_url %}
+                <img src="{{ draft.preview_url }}" alt="Preview of {{ draft.product.title }}" class="customization-preview mb-3" loading="lazy">
+                {% else %}
+                <div class="customization-preview placeholder-preview mb-3 d-flex align-items-center justify-content-center">
+                    <i class="bi bi-image text-muted fs-1" aria-hidden="true"></i>
                 </div>
-                <p class="mb-0">{{ customization.notes|default:"No notes for this customization." }}</p>
+                {% endif %}
+                <div class="d-flex flex-wrap gap-2 mt-auto">
+                    <a href="{% url 'customization:draft_detail' draft.pk %}" class="btn-get-started">
+                        <i class="bi bi-eye me-2"></i>View
+                    </a>
+                    <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-pencil-square me-2"></i>Edit
+                    </a>
+                    <form action="{% url 'customization:draft_delete' draft.pk %}" method="post" class="mb-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger">
+                            <i class="bi bi-trash me-2"></i>Delete
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <p class="text-center mb-0">You have not created any customizations yet.</p>
+    <p class="text-center">You have not created any customizations yet.</p>
+    <div class="text-center">
+        <a href="{% url 'products:list' %}" class="btn-get-started">
+            <i class="bi bi-bag me-2"></i>Browse products
+        </a>
+    </div>
     {% endif %}
 </section>
 {% endblock %}

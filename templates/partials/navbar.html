@@ -27,7 +27,7 @@
                 {% if user.is_authenticated %}
                 <li><a class="nav-link {% if app == 'accounts' %}active{% endif %}" href="{% url 'accounts:profile' %}" aria-label="Go to your profile">Profile</a></li>
                 <li><a class="nav-link {% if app == 'orders' %}active{% endif %}" href="{% url 'orders:list' %}" aria-label="Go to your orders">Orders</a></li>
-                <li><a class="nav-link {% if app == 'customizzations' %}active{% endif %}" href="{% url 'customizzations:list' %}" aria-label="Go to your customizations">Customizations</a></li>
+                <li><a class="nav-link {% if app == 'customization' %}active{% endif %}" href="{% url 'customization:list' %}" aria-label="Go to your customizations">Customizations</a></li>
                 <li><a class="nav-link" href="{% url 'account_logout' %}" aria-label="Log out of your account">Logout</a></li>
                 {% else %}
                 <li class="dropdown account-dropdown">

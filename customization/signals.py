@@ -4,6 +4,7 @@ from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from .models import CustomizationDraft
+from .services.assets import delete_assets
 
 GENERATED_FIELDS = ("preview_webp_url", "print_file_url")
 
@@ -50,6 +51,4 @@ def delete_draft_files(sender, instance, **kwargs):
         field_file = getattr(instance, field_name)
         _delete(field_file.storage, field_file.name)
 
-    asset_storage = CustomizationDraft._meta.get_field("preview_webp_url").storage
-    for path in instance.asset_paths():
-        _delete(asset_storage, path)
+    delete_assets(instance.asset_paths())

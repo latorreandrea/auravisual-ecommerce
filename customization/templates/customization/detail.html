@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}{{ draft.product.title }} customization | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Preview your personalised {{ draft.product.title }} before ordering it from AuraVisual Ecommerce.{% endblock %}
+{% block og_title %}{{ draft.product.title }} customization | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Preview your personalised {{ draft.product.title }} before ordering it from AuraVisual Ecommerce.{% endblock %}
+{% block twitter_title %}{{ draft.product.title }} customization | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Preview your personalised {{ draft.product.title }} before ordering it from AuraVisual Ecommerce.{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h2>{{ draft.product.title }}</h2>
+        <p>Your saved customization, created on {{ draft.created_at|date:"d/m/Y H:i" }}.</p>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="info-card">
+                {% if draft.preview_url %}
+                <img src="{{ draft.preview_url }}" alt="Preview of your customized {{ draft.product.title }}" class="customization-preview mb-3">
+                {% else %}
+                <div class="customization-preview placeholder-preview mb-3 d-flex align-items-center justify-content-center">
+                    <i class="bi bi-image text-muted fs-1" aria-hidden="true"></i>
+                </div>
+                {% endif %}
+                <p class="product-price mb-3">&euro; {{ draft.product.base_price }}</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}" class="btn-get-started">
+                        <i class="bi bi-pencil-square me-2"></i>Edit design
+                    </a>
+                    <form action="{% url 'cart:add' draft.product_id %}" method="post" class="mb-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="draft_id" value="{{ draft.pk }}">
+                        <button type="submit" class="btn btn-outline-secondary"{% if draft.product.stock_quantity < 1 %} disabled{% endif %}>
+                            <i class="bi bi-cart-plus me-2"></i>Add to cart
+                        </button>
+                    </form>
+                    {% if draft.print_url %}
+                    <a href="{{ draft.print_url }}" class="btn btn-outline-secondary" download>
+                        <i class="bi bi-download me-2"></i>Print file
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="info-card">
+                <h3>Design details</h3>
+                {% for view in configuration_views %}
+                <div class="mb-4">
+                    <h4 class="h6 text-uppercase text-muted">{{ view.view_name }}</h4>
+                    {% for zone in view.zones %}
+                    <div class="d-flex align-items-center gap-3 mb-2">
+                        {% if zone.asset_url %}
+                        <img src="{{ zone.asset_url }}" alt="{{ zone.zone_name }} image" class="customization-thumb" width="56" height="56" loading="lazy">
+                        {% endif %}
+                        <div>
+                            <p class="mb-0 fw-semibold">{{ zone.zone_name }}</p>
+                            <p class="mb-0 small text-muted">{{ zone.original_name|default:"Uploaded image" }}</p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% empty %}
+                <p class="mb-0">No images have been placed yet.</p>
+                {% endfor %}
+                <form action="{% url 'customization:draft_delete' draft.pk %}" method="post" class="mb-0 mt-3">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-trash me-2"></i>Delete customization
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -27,20 +27,25 @@
         <div class="col-md-6 col-lg-4">
             <div class="info-card d-flex flex-column">
                 <div class="icon-wrap"><i class="bi bi-credit-card-2-front"></i></div>
-                <h3>{{ product.name }}</h3>
-                <p class="mb-3">{{ product.description|default:"Description not available." }}</p>
-                <p class="product-price mb-3">&euro; {{ product.price }}</p>
+                <h3>{{ product.title }}</h3>
+                <p class="mb-3">{{ product.short_description|default:product.description|default:"Description not available." }}</p>
+                <p class="product-price mb-3">&euro; {{ product.base_price }}</p>
                 <p class="mb-4">
                     <span class="product-meta{% if product.stock_quantity < 1 %} is-empty{% endif %}">
                         <i class="bi bi-box-seam me-2"></i>Availability: {{ product.stock_quantity }}
                     </span>
                 </p>
-                <form action="{% url 'cart:add' product.id %}" method="post" class="product-card-actions">
-                    {% csrf_token %}
-                    <button type="submit" class="btn-get-started w-100 justify-content-center"{% if product.stock_quantity < 1 %} disabled{% endif %}>
-                        <i class="bi bi-cart-plus me-2"></i>Add to cart
-                    </button>
-                </form>
+                <div class="product-card-actions d-grid gap-2">
+                    <a href="{{ product.get_absolute_url }}" class="btn-get-started justify-content-center">
+                        <i class="bi bi-palette me-2"></i>Customize
+                    </a>
+                    <form action="{% url 'cart:add' product.pk %}" method="post" class="mb-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-secondary w-100"{% if product.stock_quantity < 1 %} disabled{% endif %}>
+                            <i class="bi bi-cart-plus me-2"></i>Add without customization
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
         {% endfor %}
