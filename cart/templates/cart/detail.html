@@ -47,9 +47,15 @@
                             <i class="bi bi-pencil-square me-2"></i>Edit design
                         </a>
                         {% else %}
+                        {% if user.is_authenticated %}
                         <a href="{{ item.customize_url }}" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-palette me-2"></i>Customize
                         </a>
+                        {% else %}
+                        <a href="{% url 'account_login' %}?next={{ item.customize_url|urlencode }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-person-plus me-2"></i>Sign in to customize
+                        </a>
+                        {% endif %}
                         {% endif %}
                         <form action="{% url 'cart:remove' item.line_key %}" method="post" class="mb-0">
                             {% csrf_token %}

@@ -2,45 +2,375 @@
 
 {% block title %}Home | AuraVisual Ecommerce{% endblock %}
 
-{% block meta_description %}AuraVisual Ecommerce: shop custom NFC cards and QR stands, personalised before purchase and delivered to your door.{% endblock %}
-{% block og_title %}Home | AuraVisual Ecommerce{% endblock %}
-{% block og_description %}AuraVisual Ecommerce: shop custom NFC cards and QR stands, personalised before purchase and delivered to your door.{% endblock %}
-{% block twitter_title %}Home | AuraVisual Ecommerce{% endblock %}
-{% block twitter_description %}AuraVisual Ecommerce: shop custom NFC cards and QR stands, personalised before purchase and delivered to your door.{% endblock %}
+{% block meta_description %}Custom NFC cards and QR stands with a live 2D editor. Upload PNG, JPG or WebP artwork, save your design and order online.{% endblock %}
+{% block og_title %}Custom NFC cards and QR stands | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Custom NFC cards and QR stands with a live 2D editor. Upload PNG, JPG or WebP artwork, save your design and order online.{% endblock %}
+{% block twitter_title %}Custom NFC cards and QR stands | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Custom NFC cards and QR stands with a live 2D editor. Upload PNG, JPG or WebP artwork, save your design and order online.{% endblock %}
+
+{% block main_class %}home-main{% endblock %}
 
 {% block content %}
-<section>
-    <div class="section-title">
-        <h2>Welcome to AuraVisual Ecommerce</h2>
-        <p>Custom NFC cards and QR stands, personalised before purchase.</p>
-    </div>
+<section class="home-hero">
+    <div class="container">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-7">
+                <p class="home-eyebrow">AuraVisual custom studio</p>
+                <h1>Make every card and stand unmistakably yours.</h1>
+                <p class="home-hero-lead">
+                    Choose a product, upload your artwork and place it inside a live 2D
+                    preview. Save the design now, then finish your order whenever you are ready.
+                </p>
 
-    <div class="text-center mb-5">
-        <a href="{% url 'products:list' %}" class="btn-get-started pulse-animation" aria-label="Go to the shop">
-            <i class="bi bi-bag me-2"></i>Go to shop
-        </a>
-    </div>
+                <div class="home-hero-actions">
+                    {% if user.is_authenticated %}
+                        {% if recent_drafts %}
+                        {% with draft=recent_drafts.0 %}
+                        <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}" class="btn-get-started">
+                            <i class="bi bi-pencil-square me-2"></i>Resume a design
+                        </a>
+                        {% endwith %}
+                        {% else %}
+                        <a href="#products" class="btn-get-started">
+                            <i class="bi bi-palette me-2"></i>Start with a product
+                        </a>
+                        {% endif %}
+                    {% else %}
+                        {% if featured_product %}
+                        <a href="{% url 'account_login' %}?next={{ featured_product.get_absolute_url|urlencode }}" class="btn-get-started">
+                            <i class="bi bi-palette me-2"></i>Start a design
+                        </a>
+                        {% else %}
+                        <a href="#products" class="btn-get-started">
+                            <i class="bi bi-grid me-2"></i>Browse products
+                        </a>
+                        {% endif %}
+                    {% endif %}
+                    <a href="#how-it-works" class="btn-home-ghost">
+                        <i class="bi bi-play-circle me-2"></i>See how it works
+                    </a>
+                    {% if user.is_staff %}
+                    <a href="{% url 'products:create' %}" class="btn-home-ghost">
+                        <i class="bi bi-plus-circle me-2"></i>Create product
+                    </a>
+                    {% endif %}
+                </div>
 
-    <div class="row g-4">
-        <div class="col-md-4">
-            <div class="info-card text-center">
-                <div class="icon-wrap"><i class="bi bi-grid"></i></div>
-                <h3>Browse products</h3>
-                <p>Explore our NFC cards, QR stands and customizable physical products.</p>
+                <ul class="home-hero-proof">
+                    <li><i class="bi bi-aspect-ratio" aria-hidden="true"></i>Live 2D preview</li>
+                    <li><i class="bi bi-file-image" aria-hidden="true"></i>PNG, JPG or WebP</li>
+                    <li><i class="bi bi-shield-check" aria-hidden="true"></i>Up to {{ max_upload_mb }} MB per image</li>
+                </ul>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="home-hero-visual">
+                    <div class="home-hero-visual-glow" aria-hidden="true"></div>
+                    {% if featured_product and featured_product.primary_view %}
+                    <span class="home-hero-badge">Featured product</span>
+                    <img src="{{ featured_product.primary_view.mockup_image.url }}"
+                         alt="{{ featured_product.title }} product mockup"
+                         class="home-hero-image">
+                    <div class="home-hero-product-meta">
+                        <strong>{{ featured_product.title }}</strong>
+                        <span>From &euro; {{ featured_product.base_price }}</span>
+                    </div>
+                    {% else %}
+                    <div class="home-hero-placeholder">
+                        <i class="bi bi-credit-card-2-front" aria-hidden="true"></i>
+                        <p class="mb-1">Your product preview appears here.</p>
+                        {% if user.is_staff %}
+                        <span>Add a product with a mockup to bring the catalogue to life.</span>
+                        {% else %}
+                        <span>New customizable products are on the way. Check back soon.</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="info-card text-center">
-                <div class="icon-wrap"><i class="bi bi-palette"></i></div>
-                <h3>Personalise</h3>
-                <p>Attach your own front and back graphics to every product before checkout.</p>
+    </div>
+</section>
+
+{% if user.is_authenticated %}
+<section class="home-section home-resume" id="resume">
+    <div class="container">
+        <div class="home-section-head">
+            <div>
+                <p class="home-eyebrow">Your workspace</p>
+                <h2>Pick up where you left off</h2>
+                <p>Your latest saved designs and the products from your most recent order.</p>
+            </div>
+            <a href="{% url 'customization:list' %}" class="home-text-link">
+                All saved designs<i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+            </a>
+        </div>
+
+        {% if recent_drafts %}
+        <div class="home-project-grid">
+            {% for draft in recent_drafts %}
+            <article class="home-project-card">
+                <div class="home-project-preview">
+                    {% if draft.preview_url %}
+                    <img src="{{ draft.preview_url }}" alt="Saved preview for {{ draft.product.title }}" loading="lazy">
+                    {% else %}
+                    <div class="home-project-placeholder">
+                        <i class="bi bi-image" aria-hidden="true"></i>
+                        <span>Preview not generated</span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="home-project-body">
+                    <p class="home-project-kicker">Saved design</p>
+                    <h3>{{ draft.product.title }}</h3>
+                    <p class="home-project-date">Updated {{ draft.updated_at|date:"M j, Y, H:i" }}</p>
+                    <div class="home-project-actions">
+                        <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}" class="btn-get-started">
+                            <i class="bi bi-pencil-square me-2"></i>Continue editing
+                        </a>
+                        <a href="{% url 'customization:draft_detail' draft.pk %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-eye me-2"></i>View
+                        </a>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="home-empty-panel">
+            <div>
+                <h3>No saved designs yet</h3>
+                <p>Start from the catalogue below. Your draft will appear here after you save it.</p>
+            </div>
+            <a href="#products" class="btn-get-started">
+                <i class="bi bi-grid me-2"></i>Browse products
+            </a>
+        </div>
+        {% endif %}
+
+        {% if buy_again %}
+        <div class="home-buy-again">
+            <div class="home-buy-again-intro">
+                <h3>From your latest order</h3>
+                <p>Start a new design on a product you already know.</p>
+                <a href="{% url 'orders:list' %}" class="home-text-link">
+                    View orders<i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                </a>
+            </div>
+            <div class="home-buy-again-list">
+                {% for item in buy_again %}
+                <a href="{{ item.product.get_absolute_url }}" class="home-buy-again-item">
+                    <span class="home-buy-again-icon"><i class="bi bi-credit-card-2-front" aria-hidden="true"></i></span>
+                    <span>
+                        <strong>{{ item.product.title }}</strong>
+                        <small>Ordered {{ item.quantity }} &middot; Customize again</small>
+                    </span>
+                    <i class="bi bi-arrow-right ms-auto" aria-hidden="true"></i>
+                </a>
+                {% endfor %}
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="info-card text-center">
-                <div class="icon-wrap"><i class="bi bi-truck"></i></div>
-                <h3>Track your orders</h3>
-                <p>Follow the status of your orders from preparation to delivery.</p>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+<section class="home-section home-products" id="products">
+    <div class="container">
+        <div class="home-section-head">
+            <div>
+                <p class="home-eyebrow">The catalogue</p>
+                <h2>Choose your starting point</h2>
+                <p>NFC cards, QR stands and physical products you can personalise before checkout.</p>
+            </div>
+            <div class="home-section-actions">
+                {% if user.is_staff %}
+                <a href="{% url 'products:create' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-plus-circle me-2"></i>Create product
+                </a>
+                {% endif %}
+                <a href="{% url 'products:list' %}" class="home-text-link">
+                    Full catalogue<i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
+        {% if products %}
+        <div class="home-product-grid">
+            {% for product in products %}
+            <article class="home-product-card">
+                <div class="home-product-media">
+                    {% if product.primary_view %}
+                    <img src="{{ product.primary_view.mockup_image.url }}"
+                         alt="{{ product.title }} product mockup"
+                         loading="lazy">
+                    {% else %}
+                    <div class="home-product-placeholder">
+                        <i class="bi bi-credit-card-2-front" aria-hidden="true"></i>
+                        <span>Mockup coming soon</span>
+                    </div>
+                    {% endif %}
+                    {% if product.stock_quantity < 1 %}
+                    <span class="home-product-flag is-sold-out">Sold out</span>
+                    {% endif %}
+                </div>
+                <div class="home-product-body">
+                    <h3>{{ product.title }}</h3>
+                    <p>{{ product.short_description|default:product.description|default:"A customizable physical product made to carry your brand."|truncatechars:140 }}</p>
+                    <div class="home-product-meta">
+                        <span class="product-price">&euro; {{ product.base_price }}</span>
+                        <span class="product-meta{% if product.stock_quantity < 1 %} is-empty{% endif %}">
+                            {% if product.stock_quantity < 1 %}
+                            <i class="bi bi-x-circle me-1"></i>Sold out
+                            {% else %}
+                            <i class="bi bi-box-seam me-1"></i>{{ product.stock_quantity }} in stock
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="home-product-actions">
+                        {% if user.is_authenticated %}
+                        <a href="{{ product.get_absolute_url }}" class="btn-get-started">
+                            <i class="bi bi-palette me-2"></i>Customize
+                        </a>
+                        {% else %}
+                        <a href="{% url 'account_login' %}?next={{ product.get_absolute_url|urlencode }}" class="btn-get-started">
+                            <i class="bi bi-person me-2"></i>Sign in to customize
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="home-empty-panel">
+            <div>
+                <h3>No products published yet</h3>
+                {% if user.is_staff %}
+                <p>Create the first product, add its mockup and printable area, and it will appear here.</p>
+                {% else %}
+                <p>The catalogue is being prepared. Please check back soon.</p>
+                {% endif %}
+            </div>
+            {% if user.is_staff %}
+            <a href="{% url 'products:create' %}" class="btn-get-started">
+                <i class="bi bi-plus-circle me-2"></i>Create product
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+<section class="home-section home-how" id="how-it-works">
+    <div class="container">
+        <div class="home-section-head home-section-head-centered">
+            <div>
+                <p class="home-eyebrow">How it works</p>
+                <h2>From artwork to a finished product</h2>
+                <p>Three clear steps, with your work saved along the way.</p>
+            </div>
+        </div>
+
+        <div class="home-step-grid">
+            <article class="home-step-card">
+                <span class="home-step-number">01</span>
+                <span class="home-step-icon"><i class="bi bi-grid" aria-hidden="true"></i></span>
+                <h3>Choose a product</h3>
+                <p>Pick a card or stand from the catalogue and open its editor.</p>
+            </article>
+            <article class="home-step-card">
+                <span class="home-step-number">02</span>
+                <span class="home-step-icon"><i class="bi bi-palette" aria-hidden="true"></i></span>
+                <h3>Upload and place</h3>
+                <p>Add your PNG, JPG or WebP artwork and position it in the live 2D preview.</p>
+            </article>
+            <article class="home-step-card">
+                <span class="home-step-number">03</span>
+                <span class="home-step-icon"><i class="bi bi-bag-check" aria-hidden="true"></i></span>
+                <h3>Save and order</h3>
+                <p>Keep the design in your account, then add it to the cart when it feels right.</p>
+            </article>
+        </div>
+    </div>
+</section>
+
+<section class="home-file-guide" id="file-guide">
+    <div class="container">
+        <div class="home-file-guide-grid">
+            <div class="home-file-guide-copy">
+                <p class="home-eyebrow">Artwork file guide</p>
+                <h2>Files that print beautifully.</h2>
+                <p>
+                    Upload a sharp, high-resolution image. Transparent PNG files work best for
+                    logos, while JPG/JPEG and WebP are fine for full-colour artwork.
+                </p>
+                <a href="mailto:info@auravisual.dk" class="home-file-guide-link">
+                    <i class="bi bi-envelope me-2" aria-hidden="true"></i>Questions about a file? info@auravisual.dk
+                </a>
+            </div>
+            <div class="home-file-facts">
+                <div class="home-file-fact">
+                    <span class="home-file-fact-icon"><i class="bi bi-file-earmark-image" aria-hidden="true"></i></span>
+                    <div>
+                        <strong>PNG, JPG/JPEG or WebP</strong>
+                        <p>These are the formats the editor checks and accepts.</p>
+                    </div>
+                </div>
+                <div class="home-file-fact">
+                    <span class="home-file-fact-icon"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></span>
+                    <div>
+                        <strong>Image size checked</strong>
+                        <p>Each image can be up to {{ max_upload_mb }} MB and is validated before saving.</p>
+                    </div>
+                </div>
+                <div class="home-file-fact">
+                    <span class="home-file-fact-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
+                    <div>
+                        <strong>Transparency supported</strong>
+                        <p>Use a transparent PNG for logos and clean, open backgrounds.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% if not user.is_authenticated %}
+<section class="home-section home-account-banner">
+    <div class="container">
+        <div class="home-account-banner-inner">
+            <div>
+                <p class="home-eyebrow">Your workspace</p>
+                <h2>Save a design now, finish it whenever.</h2>
+                <p>Create an account to keep drafts, return to previous designs and follow your orders.</p>
+            </div>
+            <div class="home-account-actions">
+                <a href="{% url 'account_signup' %}?next={{ request.get_full_path|urlencode }}" class="btn-get-started">
+                    <i class="bi bi-person-plus me-2"></i>Create an account
+                </a>
+                <a href="{% url 'account_login' %}?next={{ request.get_full_path|urlencode }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-box-arrow-in-right me-2"></i>Sign in
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section class="home-final-cta">
+    <div class="container">
+        <div class="home-final-cta-inner">
+            <div>
+                <p class="home-eyebrow">Ready when you are</p>
+                <h2>Put your brand on something people keep.</h2>
+            </div>
+            <div class="home-final-actions">
+                <a href="{% url 'products:list' %}" class="btn-get-started">
+                    <i class="bi bi-bag me-2"></i>Browse products
+                </a>
+                {% if user.is_staff %}
+                <a href="{% url 'products:create' %}" class="btn-home-ghost btn-home-ghost-dark">
+                    <i class="bi bi-plus-circle me-2"></i>Create product
+                </a>
+                {% endif %}
             </div>
         </div>
     </div>

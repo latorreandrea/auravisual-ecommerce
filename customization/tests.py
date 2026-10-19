@@ -4,6 +4,7 @@ import os
 import shutil
 import tempfile
 from decimal import Decimal
+from urllib.parse import parse_qs, urlparse
 
 from PIL import Image
 from django.conf import settings
@@ -418,3 +419,97 @@ class CustomizationFlowTests(TestCase):
             response.url,
             reverse("customization:editor", kwargs={"slug": self.product.slug}),
         )
+
+    def test_anonymous_customization_endpoints_redirect_to_login(self):
+        draft = CustomizationDraft.objects.create(
+            user=self.user,
+            product=self.product,
+            configuration_json={},
+        )
+        self.client.logout()
+        endpoints = [
+            ("get", reverse("customization:list"), {}),
+            (
+                "get",
+                reverse("customization:editor", kwargs={"slug": self.product.slug}),
+                {},
+            ),
+            ("get", reverse("customization:draft_detail", args=[draft.pk]), {}),
+            ("get", reverse("customization:draft_payload", args=[draft.pk]), {}),
+            (
+                "post",
+                reverse("customization:draft_save"),
+                {"product_id": self.product.pk},
+            ),
+            ("post", reverse("customization:draft_delete", args=[draft.pk]), {}),
+        ]
+
+        for method, url, payload in endpoints:
+            with self.subTest(method=method, url=url):
+                response = getattr(self.client, method)(url, payload)
+                self.assertEqual(response.status_code, 302)
+                parsed = urlparse(response.url)
+                self.assertEqual(parsed.path, reverse("account_login"))
+                self.assertEqual(parse_qs(parsed.query)["next"], [url])
+
+        self.assertEqual(CustomizationDraft.objects.count(), 1)
+
+    def test_anonymous_login_redirect_invites_registration(self):
+        self.client.logout()
+        editor_url = reverse(
+            "customization:editor", kwargs={"slug": self.product.slug}
+        )
+
+        redirect_response = self.client.get(editor_url)
+        login_response = self.client.get(redirect_response.url)
+
+        self.assertEqual(login_response.status_code, 200)
+        self.assertContains(login_response, "Sign in to customize")
+        self.assertContains(login_response, "New here? Create a free account")
+        self.assertContains(
+            login_response, f'href="{reverse("account_signup")}?next='
+        )
+
+    def test_anonymous_webhook_stays_token_protected(self):
+        self.client.logout()
+
+        response = self.trigger_webhook([], token="wrong-token")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Invalid webhook token.")
+
+    def test_other_user_cannot_access_or_modify_draft(self):
+        draft = CustomizationDraft.objects.create(
+            user=self.user,
+            product=self.product,
+            configuration_json={"views": []},
+        )
+        other_user = get_user_model().objects.create_user(
+            username="other-artist",
+            password="s3cret-pass",
+        )
+        self.client.force_login(other_user)
+
+        for url in (
+            reverse("customization:draft_detail", args=[draft.pk]),
+            reverse("customization:draft_payload", args=[draft.pk]),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+
+        delete_response = self.client.post(
+            reverse("customization:draft_delete", args=[draft.pk])
+        )
+        self.assertEqual(delete_response.status_code, 404)
+
+        editor_response = self.client.get(
+            reverse("customization:editor", kwargs={"slug": self.product.slug}),
+            {"draft": draft.pk},
+        )
+        self.assertEqual(editor_response.status_code, 200)
+        self.assertIsNone(editor_response.context["draft"])
+
+        save_response = self.save_draft([], draft=draft)
+        self.assertEqual(save_response.status_code, 302)
+        self.assertTrue(CustomizationDraft.objects.filter(pk=draft.pk).exists())
+        self.assertEqual(CustomizationDraft.objects.count(), 1)

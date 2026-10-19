@@ -201,15 +201,19 @@ mode.
    ```bash
    python manage.py createsuperuser
    ```
-2. Add products from admin.
+2. Sign in as a staff user and choose **Create product** in the navbar, or open
+   `/admin/`, to add products, product views and customization zones. The quick
+   form creates a product together with its first mockup view and printable area.
 3. Access:
-   - `/` home
-   - `/shop/` product list
-   - `/accounts/login/` authentication pages
-   - `/cart/` cart details
-   - `/orders/` user order list
-   - `/customization/` saved customization drafts
-   - `/customization/product/<slug>/` customization editor
+   - `/` home (public)
+   - `/shop/` product list (public)
+   - `/shop/create/` quick product creation (staff only)
+   - `/cart/` cart details (public)
+   - `/accounts/login/` and `/accounts/signup/` authentication pages
+   - `/orders/` user order list (authenticated)
+   - `/customization/` saved customization drafts (authenticated, own drafts)
+   - `/customization/product/<slug>/` customization editor (authenticated)
+   - `/admin/` Django administration (staff only)
 
 ---
 
@@ -234,17 +238,48 @@ Supported flows:
 - login/logout
 - password change
 
+### Access control
+
+| Area | Anonymous visitor | Registered customer | Staff / superuser |
+| --- | --- | --- | --- |
+| Home, products, cart | Yes | Yes | Yes |
+| Customization editor and drafts | Redirected to login with `next` | Own drafts only | Own drafts only in the storefront |
+| Draft detail, payload, delete | Redirected to login | Own drafts only; others return `404` | Own drafts only; others return `404` |
+| `/admin/` | Login page | No access | Full admin access |
+| `/shop/create/` | Redirected to login | `403 Forbidden` | Quick product creation |
+| Print webhook | Token-protected | Token-protected | Token-protected |
+
+`LOGIN_URL` points to `account_login`, so every `@login_required` view redirects
+anonymous users to `/accounts/login/?next=<original-url>`. The custom login and
+signup templates render allauth's `{{ redirect_field }}` hidden input: without
+it the `next` parameter would be lost after authentication.
+
+When the redirect comes from a customization URL, the login page:
+
+- uses the title **Sign in to customize**;
+- shows a dedicated **Create a free account** call to action;
+- preserves the same `next` URL on the signup link, so a new customer lands
+  directly in the editor or draft list after registration.
+
+The navbar and footer only show **Customizations** to authenticated users and
+**Create product** / **Admin** to staff users. Product catalogue and cart
+customization buttons send anonymous visitors to the login page with the editor
+URL already stored in `next`.
+
 ---
 
 ## Customization Workflow
 
-1. In admin, create the product, one or more **product views** and their
-   **customization zones**. A view needs a mockup image plus `canvas_width_px`
-   and `canvas_height_px`; zones define printable x/y/width/height in canvas
+1. Create the product, its first **product view** and one **customization
+   zone** with the staff quick form at `/shop/create/`, or manage the full set
+   in admin. A view needs a mockup image plus `canvas_width_px` and
+   `canvas_height_px`; zones define printable x/y/width/height in canvas
    pixels, rotation/scaling rules and an optional lower upload cap.
-2. The customer opens `/customization/product/<slug>/`, chooses a zone and
-   uploads a PNG, JPEG or WebP image. The browser editor checks the same format,
-   per-image byte, pixel and zone limits as the server before submitting.
+2. A signed-in customer opens `/customization/product/<slug>/`, chooses a zone
+   and uploads a PNG, JPEG or WebP image. Anonymous visitors are redirected to
+   the login page, which invites them to create an account while preserving the
+   editor URL in `next`. The browser editor checks the same format, per-image
+   byte, pixel and zone limits as the server before submitting.
 3. Saving validates every transform, stores the upload under the draft UUID,
    renders a compressed WebP preview and deletes assets that are no longer
    referenced. EXIF orientation is applied consistently by the browser and the
@@ -264,8 +299,11 @@ Supported flows:
    produces a PNG; multiple views produce a multi-page PDF. Set
    `CUSTOMIZATION_PRINT_ASYNC=0` to render synchronously.
 
-Draft detail and payload endpoints are owner-only; the webhook is CSRF-exempt
-but requires the configured token (compared in constant time).
+All customization views require authentication. Every queryset is filtered by
+`user=request.user`, so draft detail, payload, delete and update endpoints are
+owner-only; another customer's draft returns `404`. The webhook is the only
+machine-to-machine exception: it is CSRF-exempt but requires the configured
+token (compared in constant time) and never redirects to the login page.
 
 ---
 
@@ -328,11 +366,15 @@ Reusable partials:
 - `templates/partials/navbar.html`: `aura-visual` header markup. It accepts an
   optional `header_class` (this project passes `header-solid`, because pages do
   not start with a dark hero section) and marks the active link with
-  `request.resolver_match.app_name`. Home and Shop stay text links; the cart is
-  an icon-only link whose item count is displayed as a floating badge (hidden
-  when the cart is empty). Signed-out visitors get a single person icon that
-  opens a Bootstrap dropdown with a compact sign-in form posting to
-  `account_login`, plus a "Sign up" shortcut to `account_signup`.
+  `request.resolver_match.app_name`. The streamlined nav keeps Home and
+  Products as text links, adds How it works / File guide section links and shows
+  Customizations only to authenticated users plus a staff-only Create product
+  shortcut. The cart is an icon-only link whose item count is displayed as a
+  floating badge (hidden when the cart is empty). The account icon always opens
+  a Bootstrap dropdown: signed-out visitors get a compact sign-in form posting
+  to `account_login` and a "Sign up" shortcut that preserves `next`; signed-in
+  users get a profile summary with Profile, Orders, Customizations, Admin (staff
+  only) and Logout.
 - `templates/partials/footer.html`: `aura-visual` footer markup with the animated
   wave SVG, three columns (call to action, link groups, testimonial + social)
   and the `.btn-get-started` call to action.
@@ -346,11 +388,11 @@ Shared style building blocks used by the inner pages:
 - `.btn-get-started` for primary actions and `.product-meta` / `.product-price`
   for catalogue details.
 
-Navbar links: Home and Shop are text links, the cart is an icon with an item
-count badge, and the account area collapses into a single panel icon. When
-signed in the panel is not used and Profile, Orders, Customizations and Logout
-stay in the navbar; when signed out the panel opens the email/username sign-in
-form with the "Sign up" link underneath.
+Navbar links: Home and Products are text links, How it works and File guide jump
+to the matching home sections, and the cart is an icon with an item count badge.
+The account panel is the single place for Profile, Orders, Customizations,
+Admin and Logout when signed in, or the email/username sign-in form plus the
+"Sign up" link when signed out.
 
 ---
 
@@ -388,7 +430,10 @@ python manage.py test
 
 The `customization` suite covers upload limits and formats, EXIF orientation,
 draft save/replace/delete asset cleanup, preview generation, cart integration,
-single-view PNG and multi-view PDF output, and webhook authentication.
+single-view PNG and multi-view PDF output, webhook authentication, anonymous
+login redirects and cross-user draft isolation. The `accounts`, `products` and
+`cart` suites cover the signup/login `next` flow, the customization signup
+invitation, staff-only admin access and the anonymous customization CTAs.
 
 ---
 

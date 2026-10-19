@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Create product | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Staff tool to create a customizable AuraVisual product with its first mockup and print area.{% endblock %}
+{% block og_title %}Create product | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Staff tool to create a customizable AuraVisual product with its first mockup and print area.{% endblock %}
+{% block twitter_title %}Create product | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Staff tool to create a customizable AuraVisual product with its first mockup and print area.{% endblock %}
+
+{% block content %}
+<section class="create-product-page">
+    <div class="create-product-header">
+        <p class="home-eyebrow">Staff tools</p>
+        <h1>Create a product</h1>
+        <p class="create-product-lead">
+            Add the product details, the first mockup and one printable area. The mockup is
+            optimised on upload, and its real pixel size becomes the canvas used by the editor.
+        </p>
+        <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Back to products
+        </a>
+    </div>
+
+    {% if product_form.errors or view_form.errors or zone_form.errors %}
+    <div class="alert alert-danger" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        Please correct the highlighted fields and submit the form again.
+    </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" class="create-product-form">
+        {% csrf_token %}
+
+        <fieldset class="create-product-step">
+            <legend>
+                <span class="create-product-step-number">1</span>
+                Product details
+            </legend>
+
+            {% for error in product_form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">{{ error }}</div>
+            {% endfor %}
+
+            <div class="row g-3">
+                {% for field in product_form %}
+                <div class="{% if field.name == 'description' %}col-12{% else %}col-md-6{% endif %}">
+                    {% if field.field.widget.input_type == "checkbox" %}
+                    <div class="form-check mt-md-4">
+                        {{ field }}
+                        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    </div>
+                    {% else %}
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% endif %}
+                    {% if field.help_text %}
+                    <div class="form-text">{{ field.help_text }}</div>
+                    {% endif %}
+                    {% for error in field.errors %}
+                    <div class="invalid-feedback d-block">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <fieldset class="create-product-step">
+            <legend>
+                <span class="create-product-step-number">2</span>
+                First mockup
+            </legend>
+            <p class="create-product-step-intro">
+                Upload a transparent PNG when possible. PNG, JPG/JPEG and WebP are accepted.
+                The image is resized when needed, converted to WebP and stripped of metadata.
+            </p>
+
+            {% for error in view_form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">{{ error }}</div>
+            {% endfor %}
+
+            <div class="row g-3">
+                {% for field in view_form %}
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}
+                    <div class="form-text">{{ field.help_text }}</div>
+                    {% endif %}
+                    {% for error in field.errors %}
+                    <div class="invalid-feedback d-block">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <fieldset class="create-product-step">
+            <legend>
+                <span class="create-product-step-number">3</span>
+                First printable area
+            </legend>
+            <p class="create-product-step-intro">
+                Coordinates are measured in pixels from the top-left corner of the final,
+                optimised mockup. The area must fit inside the mockup. Customers need at least
+                one area before they can place artwork in the editor.
+            </p>
+
+            {% for error in zone_form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">{{ error }}</div>
+            {% endfor %}
+
+            <div class="row g-3">
+                {% for field in zone_form %}
+                <div class="col-md-6">
+                    {% if field.field.widget.input_type == "checkbox" %}
+                    <div class="form-check mt-md-4">
+                        {{ field }}
+                        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    </div>
+                    {% else %}
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% endif %}
+                    {% if field.help_text %}
+                    <div class="form-text">{{ field.help_text }}</div>
+                    {% endif %}
+                    {% for error in field.errors %}
+                    <div class="invalid-feedback d-block">{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="create-product-note">
+                <i class="bi bi-info-circle me-2"></i>
+                The store-wide upload limit is {{ max_upload_mb }} MB per customer image.
+                This quick form creates one view and one area. Use the
+                {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% else %}Admin{% endif %}
+                to add more views, areas or an overlay texture later.
+            </div>
+        </fieldset>
+
+        <div class="create-product-actions">
+            <button type="submit" class="btn-get-started">
+                <i class="bi bi-plus-circle me-2"></i>Create product
+            </button>
+            <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

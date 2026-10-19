@@ -29,8 +29,8 @@
               </h3>
               <p class="pb-3"><em>Empowering your digital commerce</em></p>
               <p class="mb-4">Custom NFC cards and QR stands, personalised before purchase and delivered to your door.</p>
-              <a href="{% url 'products:list' %}" class="btn-get-started" aria-label="Go to the shop">
-                <i class="bi bi-bag me-2"></i>Shop the Collection
+              <a href="{% url 'products:list' %}" class="btn-get-started" aria-label="Browse the product catalogue">
+                <i class="bi bi-bag me-2"></i>Browse the Collection
               </a>
               <div class="mt-4 contact-info">
                 <p><i class="bi bi-whatsapp me-2"></i> +45 503 22 726</p>
@@ -44,12 +44,16 @@
             <h4 class="mb-4">Explore Our Site</h4>
             <div class="row footer-links-grid">
               <div class="col-12 col-lg-6">
-                <p class="footer-links-group-title">Shop</p>
+                <p class="footer-links-group-title">Explore</p>
                 <ul class="footer-links">
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'home:index' %}" aria-label="Go to home page">Home</a></li>
-                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'products:list' %}" aria-label="Browse the shop">Shop</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'products:list' %}" aria-label="Browse products">Products</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'home:index' %}#how-it-works" aria-label="See how customization works">How it works</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'home:index' %}#file-guide" aria-label="Read the artwork file guide">File guide</a></li>
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'cart:detail' %}" aria-label="Go to your cart">Cart</a></li>
+                  {% if user.is_authenticated %}
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'customization:list' %}" aria-label="Go to your customizations">Customizations</a></li>
+                  {% endif %}
                 </ul>
               </div>
               <div class="col-12 col-lg-6">
@@ -58,10 +62,14 @@
                   {% if user.is_authenticated %}
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'accounts:profile' %}" aria-label="Go to your profile">Profile</a></li>
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'orders:list' %}" aria-label="Go to your orders">Orders</a></li>
+                  {% if user.is_staff %}
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'products:create' %}" aria-label="Create a new product">Create product</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'admin:index' %}" aria-label="Open the administration area">Admin</a></li>
+                  {% endif %}
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_logout' %}" aria-label="Log out of your account">Logout</a></li>
                   {% else %}
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_login' %}" aria-label="Log in to your account">Login</a></li>
-                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_signup' %}" aria-label="Create an account">Sign up</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_signup' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}" aria-label="Create an account">Sign up</a></li>
                   {% endif %}
                 </ul>
               </div>

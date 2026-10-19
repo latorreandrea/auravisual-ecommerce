@@ -10,16 +10,22 @@
 <div class="row justify-content-center">
     <div class="col-md-8 col-lg-5">
         <div class="auth-card">
+            {% if redirect_field_value and "customization" in redirect_field_value %}
+            {% include "accounts/partials/auth_card.html" with title="Create your account" subtitle="Sign up to customize products and keep your designs saved to your account." %}
+            {% else %}
             {% include "accounts/partials/auth_card.html" with title="Sign up" %}
+            {% endif %}
             <form method="post" action="{% url 'account_signup' %}">
                 {% csrf_token %}
                 {{ form.as_p }}
+                {{ redirect_field }}
                 <button class="btn-get-started w-100 justify-content-center" type="submit">
                     <i class="bi bi-person-plus me-2"></i>Create account
                 </button>
             </form>
             <p class="mt-3 mb-0">
-                Already have an account? <a href="{% url 'account_login' %}">Sign in</a>
+                Already have an account?
+                <a href="{% url 'account_login' %}{% if redirect_field_value %}?next={{ redirect_field_value|urlencode }}{% endif %}">Sign in</a>
             </p>
         </div>
     </div>

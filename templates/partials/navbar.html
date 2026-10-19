@@ -15,7 +15,25 @@
         <nav id="navbar" class="navbar">
             <ul>
                 <li><a class="nav-link {% if app == 'home' %}active{% endif %}" href="{% url 'home:index' %}" aria-label="Go to home page">Home</a></li>
-                <li><a class="nav-link {% if app == 'products' %}active{% endif %}" href="{% url 'products:list' %}" aria-label="Go to the shop">Shop</a></li>
+                <li><a class="nav-link {% if app == 'products' %}active{% endif %}" href="{% url 'products:list' %}" aria-label="Browse products">Products</a></li>
+                <li><a class="nav-link" href="{% url 'home:index' %}#how-it-works" aria-label="See how customization works">How it works</a></li>
+                <li><a class="nav-link" href="{% url 'home:index' %}#file-guide" aria-label="Read the artwork file guide">File guide</a></li>
+                {% if user.is_authenticated %}
+                <li><a class="nav-link {% if app == 'customization' %}active{% endif %}" href="{% url 'customization:list' %}" aria-label="Go to your customizations">Customizations</a></li>
+                {% endif %}
+                {% if user.is_staff %}
+                <li>
+                    <a class="nav-link nav-create-link {% if url_name == 'create' %}active{% endif %}" href="{% url 'products:create' %}" aria-label="Create a new product">
+                        <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Create product
+                    </a>
+                </li>
+                {% endif %}
+                <li class="nav-spacer" aria-hidden="true"></li>
+                <li>
+                    <a class="nav-link nav-icon-link" href="https://www.auravisual.dk/" target="_blank" rel="noopener noreferrer" aria-label="Visit the main AuraVisual website">
+                        <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                    </a>
+                </li>
                 <li>
                     <a class="nav-link nav-icon-link cart-nav-link {% if app == 'cart' %}active{% endif %}" href="{% url 'cart:detail' %}" aria-label="Cart: {{ cart_summary.count }} item{{ cart_summary.count|pluralize }}">
                         <span class="cart-icon-wrap">
@@ -25,10 +43,46 @@
                     </a>
                 </li>
                 {% if user.is_authenticated %}
-                <li><a class="nav-link {% if app == 'accounts' %}active{% endif %}" href="{% url 'accounts:profile' %}" aria-label="Go to your profile">Profile</a></li>
-                <li><a class="nav-link {% if app == 'orders' %}active{% endif %}" href="{% url 'orders:list' %}" aria-label="Go to your orders">Orders</a></li>
-                <li><a class="nav-link {% if app == 'customization' %}active{% endif %}" href="{% url 'customization:list' %}" aria-label="Go to your customizations">Customizations</a></li>
-                <li><a class="nav-link" href="{% url 'account_logout' %}" aria-label="Log out of your account">Logout</a></li>
+                <li class="dropdown account-dropdown">
+                    <button type="button"
+                            id="account-panel-toggle"
+                            class="account-toggle nav-icon-link {% if app == 'accounts' or app == 'orders' or app == 'customization' %}active{% endif %}"
+                            data-bs-toggle="dropdown"
+                            data-bs-display="static"
+                            data-bs-auto-close="outside"
+                            aria-haspopup="true"
+                            aria-expanded="false"
+                            aria-controls="account-panel"
+                            aria-label="Open your account menu">
+                        <i class="bi bi-person-check" aria-hidden="true"></i>
+                    </button>
+                    <div id="account-panel" class="dropdown-menu account-panel account-panel-user" aria-labelledby="account-panel-toggle">
+                        <p class="account-panel-greeting mb-1">{{ user.get_full_name|default:user.get_username }}</p>
+                        <p class="account-panel-subtitle mb-3">Manage your account, orders and saved designs.</p>
+                        <div class="account-menu">
+                            <a class="account-menu-link" href="{% url 'accounts:profile' %}">
+                                <i class="bi bi-person" aria-hidden="true"></i>Profile
+                            </a>
+                            <a class="account-menu-link" href="{% url 'orders:list' %}">
+                                <i class="bi bi-receipt" aria-hidden="true"></i>My orders
+                            </a>
+                            <a class="account-menu-link" href="{% url 'customization:list' %}">
+                                <i class="bi bi-palette" aria-hidden="true"></i>My designs
+                            </a>
+                            {% if user.is_staff %}
+                            <a class="account-menu-link" href="{% url 'products:create' %}">
+                                <i class="bi bi-plus-circle" aria-hidden="true"></i>Create product
+                            </a>
+                            <a class="account-menu-link" href="{% url 'admin:index' %}">
+                                <i class="bi bi-speedometer2" aria-hidden="true"></i>Admin
+                            </a>
+                            {% endif %}
+                            <a class="account-menu-link account-menu-logout" href="{% url 'account_logout' %}">
+                                <i class="bi bi-box-arrow-right" aria-hidden="true"></i>Logout
+                            </a>
+                        </div>
+                    </div>
+                </li>
                 {% else %}
                 <li class="dropdown account-dropdown">
                     <button type="button"
@@ -48,7 +102,9 @@
                         <p class="account-panel-subtitle mb-3">Sign in to your AuraVisual account.</p>
                         <form method="post" action="{% url 'account_login' %}" class="account-panel-form">
                             {% csrf_token %}
-                            {% if url_name != 'account_login' and url_name != 'account_signup' %}
+                            {% if request.GET.next %}
+                            <input type="hidden" name="next" value="{{ request.GET.next }}">
+                            {% elif url_name != 'account_login' and url_name != 'account_signup' %}
                             <input type="hidden" name="next" value="{{ request.get_full_path }}">
                             {% endif %}
                             <div class="mb-2">
@@ -65,7 +121,7 @@
                         </form>
                         <p class="account-panel-footer mb-0">
                             Don't have an account?
-                            <a href="{% url 'account_signup' %}" class="account-panel-signup">Sign up</a>
+                            <a href="{% url 'account_signup' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% elif url_name != 'account_login' and url_name != 'account_signup' %}?next={{ request.get_full_path|urlencode }}{% endif %}" class="account-panel-signup">Sign up</a>
                         </p>
                     </div>
                 </li>

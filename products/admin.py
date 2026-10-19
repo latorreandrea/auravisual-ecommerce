@@ -1,27 +1,15 @@
 from django import forms
 from django.contrib import admin
-from django.core.files.uploadedfile import UploadedFile
 from django.utils.html import format_html
 
+from .forms import MockupImageFormMixin
 from .models import CustomizationZone, Product, ProductView
-from .services.images import optimize_mockup
 
 
-class ProductViewAdminForm(forms.ModelForm):
+class ProductViewAdminForm(MockupImageFormMixin, forms.ModelForm):
     class Meta:
         model = ProductView
         fields = "__all__"
-
-    def clean_mockup_image(self):
-        image = self.cleaned_data.get("mockup_image")
-        if not image or not isinstance(image, UploadedFile):
-            # No new file was chosen: keep the optimized mockup already stored.
-            return image
-
-        optimized, width, height = optimize_mockup(image)
-        self.instance.canvas_width_px = width
-        self.instance.canvas_height_px = height
-        return optimized
 
 
 class MockupPreviewMixin:

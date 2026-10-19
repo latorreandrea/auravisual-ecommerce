@@ -61,3 +61,28 @@ class CartDraftTests(TestCase):
             response,
             reverse("customization:draft_detail", kwargs={"draft_id": draft.pk}),
         )
+
+
+class AnonymousCartCustomizationTests(TestCase):
+    def setUp(self):
+        self.product = Product.objects.create(
+            title="Canvas Tote",
+            base_price="19.90",
+            stock_quantity=5,
+        )
+        session = self.client.session
+        session[CART_SESSION_KEY] = {
+            line_key(self.product.pk): {
+                "product_id": self.product.pk,
+                "draft_id": None,
+                "quantity": 1,
+            }
+        }
+        session.save()
+
+    def test_anonymous_shopper_is_redirected_to_login_before_customizing(self):
+        response = self.client.get(reverse("cart:detail"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sign in to customize")
+        self.assertContains(response, f"{reverse('account_login')}?next=")

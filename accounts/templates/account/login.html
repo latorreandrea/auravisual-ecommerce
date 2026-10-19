@@ -10,17 +10,35 @@
 <div class="row justify-content-center">
     <div class="col-md-8 col-lg-5">
         <div class="auth-card">
+            {% if redirect_field_value and "customization" in redirect_field_value %}
+            {% include "accounts/partials/auth_card.html" with title="Sign in to customize" subtitle="Sign in to continue where you left off." %}
+            <div class="auth-invite">
+                <span class="auth-invite-icon" aria-hidden="true"><i class="bi bi-palette"></i></span>
+                <h2 class="h5">New here? Create a free account</h2>
+                <p class="mb-3">Create an account to open the customization editor, save your designs and come back to edit them whenever you like.</p>
+                <a class="btn-get-started w-100 justify-content-center" href="{% url 'account_signup' %}?next={{ redirect_field_value|urlencode }}">
+                    <i class="bi bi-person-plus me-2"></i>Create a free account
+                </a>
+                <p class="auth-invite-note mb-0">Registration is free and only takes a minute.</p>
+            </div>
+            <p class="auth-form-intro">Already have an account? Sign in below.</p>
+            {% else %}
             {% include "accounts/partials/auth_card.html" with title="Sign in" %}
+            {% endif %}
             <form method="post" action="{% url 'account_login' %}">
                 {% csrf_token %}
                 {{ form.as_p }}
+                {{ redirect_field }}
                 <button class="btn-get-started w-100 justify-content-center" type="submit">
                     <i class="bi bi-box-arrow-in-right me-2"></i>Login
                 </button>
             </form>
+            {% if not redirect_field_value or "customization" not in redirect_field_value %}
             <p class="mt-3 mb-0">
-                Don't have an account? <a href="{% url 'account_signup' %}">Sign up</a>
+                Don't have an account?
+                <a href="{% url 'account_signup' %}{% if redirect_field_value %}?next={{ redirect_field_value|urlencode }}{% endif %}">Sign up</a>
             </p>
+            {% endif %}
         </div>
     </div>
 </div>
