@@ -327,17 +327,6 @@
         mockup.src = view.mockup_url;
         mockup.alt = `${data.product.title} - ${view.name}`;
 
-        let overlay = document.getElementById("editor-overlay");
-        if (!overlay) {
-            overlay = document.createElement("img");
-            overlay.id = "editor-overlay";
-            overlay.className = "editor-overlay";
-            overlay.alt = "";
-            mockup.insertAdjacentElement("afterend", overlay);
-        }
-        overlay.hidden = !view.overlay_url;
-        overlay.src = view.overlay_url || "";
-
         zonesLayer.innerHTML = "";
         view.zones.forEach((zone) => {
             const clip = document.createElement("div");

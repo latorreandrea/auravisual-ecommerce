@@ -94,6 +94,14 @@
                         </a>
                         {% endif %}
                     </div>
+
+                    {% if user.is_staff %}
+                    <hr>
+                    <p class="text-uppercase small text-muted fw-semibold mb-2">Staff actions</p>
+                    <button type="button" class="btn btn-outline-danger w-100" data-bs-toggle="modal" data-bs-target="#deactivate-product-modal">
+                        <i class="bi bi-eye-slash me-2"></i>Deactivate product
+                    </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -105,6 +113,37 @@
         <a href="{% url 'products:list' %}" class="btn-get-started">
             <i class="bi bi-arrow-left me-2"></i>Back to shop
         </a>
+        {% if user.is_staff %}
+        <button type="button" class="btn btn-outline-danger mt-3" data-bs-toggle="modal" data-bs-target="#deactivate-product-modal">
+            <i class="bi bi-eye-slash me-2"></i>Deactivate product
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if user.is_staff %}
+    <div class="modal fade" id="deactivate-product-modal" tabindex="-1" aria-labelledby="deactivate-product-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title fs-5" id="deactivate-product-modal-label">Deactivate product?</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>This hides <strong>{{ product.title }}</strong> from the shop, customization editor and draft list.</p>
+                    <p class="mb-0">Sides, printable areas, saved customizations and uploaded files are kept. A staff user can reactivate the product from the Django admin.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <form action="{% url 'products:deactivate' product.slug %}" method="post" class="mb-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-eye-slash me-2"></i>Deactivate product
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
     {% endif %}
 </section>

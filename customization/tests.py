@@ -140,6 +140,7 @@ class CustomizationFlowTests(TestCase):
             settings.CUSTOMIZATION_MAX_IMAGE_PIXELS,
         )
         self.assertEqual(editor_payload["views"][0]["zones"][0]["id"], self.zone.pk)
+        self.assertNotIn("overlay_url", editor_payload["views"][0])
 
     def test_save_preview_cart_print_and_delete(self):
         response = self.save_draft(
@@ -513,3 +514,102 @@ class CustomizationFlowTests(TestCase):
         self.assertEqual(save_response.status_code, 302)
         self.assertTrue(CustomizationDraft.objects.filter(pk=draft.pk).exists())
         self.assertEqual(CustomizationDraft.objects.count(), 1)
+
+    def test_staff_see_the_deactivate_action_in_the_editor(self):
+        staff = get_user_model().objects.create_user(
+            username="staff",
+            password="s3cret-pass",
+            is_staff=True,
+        )
+        self.client.force_login(staff)
+
+        response = self.client.get(
+            reverse("customization:editor", kwargs={"slug": self.product.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Staff actions")
+        self.assertContains(response, "Deactivate product")
+        self.assertContains(response, 'id="deactivate-product-modal"')
+        self.assertContains(
+            response,
+            reverse("products:deactivate", kwargs={"slug": self.product.slug}),
+        )
+        self.assertContains(
+            response,
+            "Sides, printable areas, saved customizations and uploaded files are kept.",
+        )
+
+    def test_customers_do_not_see_the_deactivate_action(self):
+        response = self.client.get(
+            reverse("customization:editor", kwargs={"slug": self.product.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Deactivate product")
+        self.assertNotContains(response, "deactivate-product-modal")
+
+    def test_staff_see_the_deactivate_action_without_editable_views(self):
+        product = Product.objects.create(
+            title="Unprepared Tee",
+            base_price=Decimal("25.00"),
+            stock_quantity=5,
+        )
+        empty_view = ProductView.objects.create(
+            product=product,
+            name="Front",
+            sort_order=1,
+        )
+        CustomizationZone.objects.create(
+            product_view=empty_view,
+            name="Chest",
+            x=50,
+            y=50,
+            width=100,
+            height=100,
+        )
+        staff = get_user_model().objects.create_user(
+            username="staff",
+            password="s3cret-pass",
+            is_staff=True,
+        )
+        self.client.force_login(staff)
+
+        response = self.client.get(
+            reverse("customization:editor", kwargs={"slug": product.slug})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This product cannot be customized yet.")
+        self.assertContains(response, "Deactivate product")
+        self.assertContains(
+            response,
+            reverse("products:deactivate", kwargs={"slug": product.slug}),
+        )
+
+    def test_deactivated_product_hides_its_drafts_until_reactivated(self):
+        draft = CustomizationDraft.objects.create(
+            user=self.user,
+            product=self.product,
+            configuration_json={"views": []},
+        )
+        self.product.is_active = False
+        self.product.save(update_fields=["is_active", "updated_at"])
+
+        listing = self.client.get(reverse("customization:list"))
+        detail = self.client.get(
+            reverse("customization:draft_detail", args=[draft.pk])
+        )
+        payload = self.client.get(
+            reverse("customization:draft_payload", args=[draft.pk])
+        )
+
+        self.assertNotContains(listing, self.product.title)
+        self.assertEqual(detail.status_code, 404)
+        self.assertEqual(payload.status_code, 404)
+
+        self.product.is_active = True
+        self.product.save(update_fields=["is_active", "updated_at"])
+
+        listing = self.client.get(reverse("customization:list"))
+        self.assertContains(listing, self.product.title)

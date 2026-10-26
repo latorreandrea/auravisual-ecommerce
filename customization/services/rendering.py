@@ -115,12 +115,6 @@ def render_view(view, zone_items, target_width=None):
         layer.putalpha(alpha)
         canvas = Image.alpha_composite(canvas, layer)
 
-    if view.overlay_texture:
-        overlay = _load_field_image(view.overlay_texture).resize(
-            (output_width, output_height), RESAMPLING
-        )
-        canvas = Image.alpha_composite(canvas, overlay)
-
     return canvas
 
 

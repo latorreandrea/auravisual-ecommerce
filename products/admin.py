@@ -53,7 +53,6 @@ class ProductViewInline(MockupPreviewMixin, admin.TabularInline):
         "mockup_preview",
         "canvas_width_px",
         "canvas_height_px",
-        "overlay_texture",
     )
     readonly_fields = ("mockup_preview", "canvas_width_px", "canvas_height_px")
     show_change_link = True
@@ -70,6 +69,7 @@ class ProductAdmin(admin.ModelAdmin):
         "updated_at",
     )
     list_filter = ("is_active",)
+    list_editable = ("is_active",)
     search_fields = ("title", "slug", "description")
     prepopulated_fields = {"slug": ("title",)}
     inlines = (ProductViewInline,)
@@ -94,7 +94,6 @@ class ProductViewAdmin(MockupPreviewMixin, admin.ModelAdmin):
                     "mockup_preview",
                     "canvas_width_px",
                     "canvas_height_px",
-                    "overlay_texture",
                 )
             },
         ),

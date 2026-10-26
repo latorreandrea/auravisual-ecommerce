@@ -1,120 +1,109 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Create product | AuraVisual Ecommerce{% endblock %}
 
-{% block meta_description %}Staff tool to create a customizable AuraVisual product with its first mockup and print area.{% endblock %}
+{% block meta_description %}Staff wizard to create a customizable AuraVisual product with multiple sides and one drawable print area per side.{% endblock %}
 {% block og_title %}Create product | AuraVisual Ecommerce{% endblock %}
-{% block og_description %}Staff tool to create a customizable AuraVisual product with its first mockup and print area.{% endblock %}
+{% block og_description %}Staff wizard to create a customizable AuraVisual product with multiple sides and one drawable print area per side.{% endblock %}
 {% block twitter_title %}Create product | AuraVisual Ecommerce{% endblock %}
-{% block twitter_description %}Staff tool to create a customizable AuraVisual product with its first mockup and print area.{% endblock %}
+{% block twitter_description %}Staff wizard to create a customizable AuraVisual product with multiple sides and one drawable print area per side.{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/product-wizard.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endblock %}
 
 {% block content %}
-<section class="create-product-page">
-    <div class="create-product-header">
-        <p class="home-eyebrow">Staff tools</p>
-        <h1>Create a product</h1>
-        <p class="create-product-lead">
-            Add the product details, the first mockup and one printable area. The mockup is
-            optimised on upload, and its real pixel size becomes the canvas used by the editor.
-        </p>
+<section class="create-product-page wizard-page">
+    <div class="create-product-header wizard-page-header">
+        <div>
+            <p class="home-eyebrow">Staff tools</p>
+            <h1>Create a product</h1>
+            <p class="create-product-lead">
+                Add the product details, upload one mockup per side, and draw the exact
+                area customers may customize. Every side gets exactly one printable area.
+            </p>
+        </div>
         <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left me-2"></i>Back to products
         </a>
     </div>
 
-    {% if product_form.errors or view_form.errors or zone_form.errors %}
-    <div class="alert alert-danger" role="alert">
+    <nav class="wizard-stepper" aria-label="Create product steps">
+        <ol>
+            <li class="{% if active_step == 1 %}is-current{% elif active_step > 1 %}is-complete{% endif %}" data-step-indicator="1">
+                <button type="button" data-step-target="1" {% if active_step == 1 %}aria-current="step"{% endif %}>
+                    <span class="wizard-step-number"><i class="bi bi-check-lg"></i><span>1</span></span>
+                    <span class="wizard-step-copy">
+                        <strong>Product details</strong>
+                        <small>Name, price and stock</small>
+                    </span>
+                </button>
+            </li>
+            <li class="{% if active_step == 2 %}is-current{% elif active_step > 2 %}is-complete{% endif %}" data-step-indicator="2">
+                <button type="button" data-step-target="2" {% if active_step == 2 %}aria-current="step"{% endif %}>
+                    <span class="wizard-step-number"><i class="bi bi-check-lg"></i><span>2</span></span>
+                    <span class="wizard-step-copy">
+                        <strong>Faces &amp; print areas</strong>
+                        <small>Mockups and drawable areas</small>
+                    </span>
+                </button>
+            </li>
+            <li class="{% if active_step == 3 %}is-current{% endif %}" data-step-indicator="3">
+                <button type="button" data-step-target="3" {% if active_step == 3 %}aria-current="step"{% endif %}>
+                    <span class="wizard-step-number"><i class="bi bi-check-lg"></i><span>3</span></span>
+                    <span class="wizard-step-copy">
+                        <strong>Review</strong>
+                        <small>Check and create</small>
+                    </span>
+                </button>
+            </li>
+        </ol>
+        <div class="wizard-progress" role="progressbar" aria-label="Wizard progress"
+             aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="{% widthratio active_step 3 100 %}">
+            <span data-wizard-progress style="width: {% widthratio active_step 3 100 %}%"></span>
+        </div>
+    </nav>
+
+    {% if has_errors %}
+    <div class="alert alert-danger wizard-alert" role="alert">
         <i class="bi bi-exclamation-triangle me-2"></i>
         Please correct the highlighted fields and submit the form again.
     </div>
     {% endif %}
+    <div id="wizard-error" class="alert alert-danger wizard-alert d-none" role="alert" tabindex="-1"></div>
 
-    <form method="post" enctype="multipart/form-data" class="create-product-form">
+
+    <form method="post" enctype="multipart/form-data" class="create-product-form wizard-form"
+          id="product-wizard-form"
+          data-initial-step="{{ active_step }}"
+          data-initial-face="{{ active_face }}"
+          data-max-views="{{ max_views }}">
         {% csrf_token %}
+        {{ view_formset.management_form }}
 
-        <fieldset class="create-product-step">
-            <legend>
-                <span class="create-product-step-number">1</span>
-                Product details
-            </legend>
+        <section class="wizard-step-panel{% if active_step == 1 %} is-active{% endif %}"
+                 id="wizard-step-1" data-wizard-step="1"
+                 aria-labelledby="wizard-step-1-title"
+                 {% if active_step != 1 %}hidden{% endif %}>
+            <div class="wizard-panel-heading">
+                <div>
+                    <p class="wizard-kicker">Step 1 of 3</p>
+                    <h2 id="wizard-step-1-title">Product details</h2>
+                    <p>These details appear on the product card and in the catalogue.</p>
+                </div>
+            </div>
 
             {% for error in product_form.non_field_errors %}
-            <div class="alert alert-danger" role="alert">{{ error }}</div>
+            <div class="alert alert-danger py-2 px-3" role="alert">{{ error }}</div>
             {% endfor %}
 
             <div class="row g-3">
                 {% for field in product_form %}
                 <div class="{% if field.name == 'description' %}col-12{% else %}col-md-6{% endif %}">
                     {% if field.field.widget.input_type == "checkbox" %}
-                    <div class="form-check mt-md-4">
-                        {{ field }}
-                        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    </div>
-                    {% else %}
-                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
-                    {% endif %}
-                    {% if field.help_text %}
-                    <div class="form-text">{{ field.help_text }}</div>
-                    {% endif %}
-                    {% for error in field.errors %}
-                    <div class="invalid-feedback d-block">{{ error }}</div>
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </div>
-        </fieldset>
-
-        <fieldset class="create-product-step">
-            <legend>
-                <span class="create-product-step-number">2</span>
-                First mockup
-            </legend>
-            <p class="create-product-step-intro">
-                Upload a transparent PNG when possible. PNG, JPG/JPEG and WebP are accepted.
-                The image is resized when needed, converted to WebP and stripped of metadata.
-            </p>
-
-            {% for error in view_form.non_field_errors %}
-            <div class="alert alert-danger" role="alert">{{ error }}</div>
-            {% endfor %}
-
-            <div class="row g-3">
-                {% for field in view_form %}
-                <div class="col-md-6">
-                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
-                    {% if field.help_text %}
-                    <div class="form-text">{{ field.help_text }}</div>
-                    {% endif %}
-                    {% for error in field.errors %}
-                    <div class="invalid-feedback d-block">{{ error }}</div>
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </div>
-        </fieldset>
-
-        <fieldset class="create-product-step">
-            <legend>
-                <span class="create-product-step-number">3</span>
-                First printable area
-            </legend>
-            <p class="create-product-step-intro">
-                Coordinates are measured in pixels from the top-left corner of the final,
-                optimised mockup. The area must fit inside the mockup. Customers need at least
-                one area before they can place artwork in the editor.
-            </p>
-
-            {% for error in zone_form.non_field_errors %}
-            <div class="alert alert-danger" role="alert">{{ error }}</div>
-            {% endfor %}
-
-            <div class="row g-3">
-                {% for field in zone_form %}
-                <div class="col-md-6">
-                    {% if field.field.widget.input_type == "checkbox" %}
-                    <div class="form-check mt-md-4">
+                    <div class="form-check wizard-check mt-md-4">
                         {{ field }}
                         <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
                     </div>
@@ -132,21 +121,142 @@
                 {% endfor %}
             </div>
 
-            <div class="create-product-note">
+            <div class="wizard-step-actions">
+                <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">Cancel</a>
+                <button type="button" class="btn-get-started" data-wizard-next="2">
+                    Continue to faces<i class="bi bi-arrow-right ms-2"></i>
+                </button>
+            </div>
+        </section>
+
+
+        <section class="wizard-step-panel{% if active_step == 2 %} is-active{% endif %}"
+                 id="wizard-step-2" data-wizard-step="2"
+                 aria-labelledby="wizard-step-2-title"
+                 {% if active_step != 2 %}hidden{% endif %}>
+            <div class="wizard-panel-heading">
+                <div>
+                    <p class="wizard-kicker">Step 2 of 3</p>
+                    <h2 id="wizard-step-2-title">Faces &amp; print areas</h2>
+                    <p>
+                        Add up to {{ max_views }} sides. Each side has one mockup and exactly
+                        one printable area. The area is stored as ratios of the optimized
+                        mockup, so it lines up in the customer editor.
+                    </p>
+                </div>
+            </div>
+
+            {% for error in view_formset.non_form_errors %}
+            <div class="alert alert-danger py-2 px-3" role="alert">{{ error }}</div>
+            {% endfor %}
+
+            <div class="wizard-face-nav">
+                <div class="wizard-face-tabs" data-face-tabs role="tablist" aria-label="Product sides" hidden></div>
+                <button type="button" class="btn btn-outline-secondary wizard-add-face" data-add-face hidden>
+                    <i class="bi bi-plus-lg me-1"></i>Add side
+                </button>
+            </div>
+
+            <div class="wizard-face-panels" data-face-panels>
+                {% for row in face_rows %}
+                {% include "products/partials/face_form.html" with view_form=row.view_form zone_form=row.zone_form face_index=row.index is_active=row.is_active %}
+                {% empty %}
+                <div class="wizard-empty-faces" data-empty-faces>
+                    <i class="bi bi-layers"></i>
+                    <p>No sides were submitted. Add a side to continue.</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <template id="wizard-face-template">
+                {% include "products/partials/face_form.html" with view_form=view_formset.empty_form zone_form=empty_zone_form face_index="__prefix__" is_active=0 %}
+            </template>
+
+            <p class="wizard-note">
                 <i class="bi bi-info-circle me-2"></i>
-                The store-wide upload limit is {{ max_upload_mb }} MB per customer image.
-                This quick form creates one view and one area. Use the
-                {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% else %}Admin{% endif %}
-                to add more views, areas or an overlay texture later.
-            </div>
-        </fieldset>
+                The preview is local and disappears if you leave the page before creating
+                the product. The customer upload limit is {{ max_upload_mb }} MB per image.
+            </p>
 
-        <div class="create-product-actions">
-            <button type="submit" class="btn-get-started">
-                <i class="bi bi-plus-circle me-2"></i>Create product
-            </button>
-            <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">Cancel</a>
-        </div>
+            <div class="wizard-step-actions">
+                <button type="button" class="btn btn-outline-secondary" data-wizard-back="1">
+                    <i class="bi bi-arrow-left me-2"></i>Back
+                </button>
+                <button type="button" class="btn-get-started" data-wizard-next="3">
+                    Review product<i class="bi bi-arrow-right ms-2"></i>
+                </button>
+            </div>
+        </section>
+
+
+        <section class="wizard-step-panel{% if active_step == 3 %} is-active{% endif %}"
+                 id="wizard-step-3" data-wizard-step="3"
+                 aria-labelledby="wizard-step-3-title"
+                 {% if active_step != 3 %}hidden{% endif %}>
+            <div class="wizard-panel-heading">
+                <div>
+                    <p class="wizard-kicker">Step 3 of 3</p>
+                    <h2 id="wizard-step-3-title">Review and create</h2>
+                    <p>Nothing is saved until you press Create product.</p>
+                </div>
+            </div>
+
+            <div class="wizard-review">
+                <article class="wizard-review-card">
+                    <h3><i class="bi bi-box-seam me-2"></i>Product</h3>
+                    <dl class="wizard-review-list">
+                        <div><dt>Title</dt><dd data-review-title>—</dd></div>
+                        <div><dt>Description</dt><dd data-review-description>—</dd></div>
+                        <div><dt>Base price</dt><dd data-review-price>—</dd></div>
+                        <div><dt>Stock</dt><dd data-review-stock>—</dd></div>
+                        <div><dt>Visibility</dt><dd data-review-visibility>—</dd></div>
+                    </dl>
+                </article>
+
+                <article class="wizard-review-card wizard-review-faces-card">
+                    <div class="wizard-review-card-head">
+                        <h3><i class="bi bi-layers me-2"></i>Sides &amp; print areas</h3>
+                        <span class="wizard-review-count" data-review-face-count>0 sides</span>
+                    </div>
+                    <div class="wizard-review-faces" data-review-faces></div>
+                </article>
+            </div>
+
+            <p class="wizard-note">
+                <i class="bi bi-shield-check me-2"></i>
+                The product, its sides and all printable areas are created together in one
+                transaction. If anything fails, nothing is saved.
+            </p>
+
+            <div class="wizard-step-actions">
+                <button type="button" class="btn btn-outline-secondary" data-wizard-back="2">
+                    <i class="bi bi-arrow-left me-2"></i>Back to faces
+                </button>
+                <button type="submit" class="btn-get-started" id="wizard-submit">
+                    <span class="spinner-border spinner-border-sm me-2 d-none" data-submit-spinner aria-hidden="true"></span>
+                    <span data-submit-label>Create product</span>
+                </button>
+            </div>
+        </section>
     </form>
+
+    <noscript>
+        <style>
+            .wizard-step-panel[hidden],
+            .wizard-face-panel[hidden] {
+                display: block !important;
+            }
+            .wizard-step-panel {
+                margin-bottom: 2rem;
+            }
+            .wizard-step-actions {
+                display: flex !important;
+            }
+        </style>
+    </noscript>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/product-wizard.js' %}?v={{ ASSET_VERSION }}" defer></script>
 {% endblock %}

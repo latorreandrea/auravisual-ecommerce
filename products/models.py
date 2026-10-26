@@ -53,11 +53,6 @@ class ProductView(models.Model):
             "stripped of metadata."
         ),
     )
-    overlay_texture = models.ImageField(
-        upload_to="products/overlays/",
-        blank=True,
-        help_text="Optional reflections, shadows or finishing effects applied above the user image.",
-    )
     canvas_width_px = models.PositiveIntegerField(editable=False, default=0)
     canvas_height_px = models.PositiveIntegerField(editable=False, default=0)
 

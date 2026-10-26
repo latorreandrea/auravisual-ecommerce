@@ -1,9 +1,18 @@
 from django import forms
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
+from django.forms import inlineformset_factory
 
 from .models import CustomizationZone, Product, ProductView
 from .services.images import optimize_mockup
+
+MAX_PRODUCT_VIEWS = 8
+DEFAULT_AREA_RATIOS = {
+    "x_ratio": 0.1,
+    "y_ratio": 0.1,
+    "width_ratio": 0.8,
+    "height_ratio": 0.8,
+}
 
 
 class BootstrapFormMixin:
@@ -59,82 +68,209 @@ class ProductCreateForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class ProductViewForm(MockupImageFormMixin, BootstrapFormMixin, forms.ModelForm):
-    """The first view of a product, created together with the product itself."""
+    """One product side, created together with the product itself."""
 
     class Meta:
         model = ProductView
-        fields = ("name", "sort_order", "mockup_image", "overlay_texture")
+        fields = ("name", "mockup_image")
         labels = {
-            "name": "View name",
-            "sort_order": "Display order",
+            "name": "Side name",
             "mockup_image": "Mockup image",
-            "overlay_texture": "Overlay texture (optional)",
         }
         help_texts = {
             "name": 'Use a clear side name such as "Front", "Back" or "Left side".',
-            "sort_order": "Lower numbers appear first in the editor.",
             "mockup_image": (
                 "PNG, JPG/JPEG or WebP. The image is resized, converted to WebP "
                 "and stripped of metadata automatically."
             ),
-            "overlay_texture": (
-                "Optional PNG/WebP layer for reflections or shadows. It is applied "
-                "above the customer artwork."
-            ),
-        }
-        widgets = {
-            "sort_order": forms.NumberInput(attrs={"min": "1", "step": "1"}),
         }
 
 
-class CustomizationZoneForm(BootstrapFormMixin, forms.ModelForm):
-    """One printable area, expressed in mockup pixels."""
+ProductViewFormSet = inlineformset_factory(
+    Product,
+    ProductView,
+    form=ProductViewForm,
+    extra=0,
+    can_delete=False,
+    min_num=1,
+    validate_min=True,
+    max_num=MAX_PRODUCT_VIEWS,
+    validate_max=True,
+)
 
-    def __init__(self, *args, **kwargs):
+
+class PrintAreaForm(BootstrapFormMixin, forms.Form):
+    """One printable area for a product side.
+
+    The browser draws a rectangle and submits normalized ratios. They are
+    converted to pixels only after ``optimize_mockup`` has stored the final
+    canvas dimensions, so the saved zone always matches the optimized mockup
+    used by the customer editor and the renderer.
+    """
+
+    name = forms.CharField(
+        required=False,
+        max_length=80,
+        label="Area name",
+        help_text="Shown in the customer editor. Defaults to the side name.",
+    )
+    full_face = forms.BooleanField(
+        required=False,
+        label="Use the entire face",
+        help_text="Make the whole optimized mockup available for customization.",
+    )
+    x_ratio = forms.FloatField(
+        required=False,
+        min_value=0,
+        max_value=1,
+        widget=forms.HiddenInput,
+    )
+    y_ratio = forms.FloatField(
+        required=False,
+        min_value=0,
+        max_value=1,
+        widget=forms.HiddenInput,
+    )
+    width_ratio = forms.FloatField(
+        required=False,
+        min_value=0,
+        max_value=1,
+        widget=forms.HiddenInput,
+    )
+    height_ratio = forms.FloatField(
+        required=False,
+        min_value=0,
+        max_value=1,
+        widget=forms.HiddenInput,
+    )
+    rotation = forms.FloatField(
+        required=False,
+        min_value=-180,
+        max_value=180,
+        initial=0,
+        label="Default rotation (degrees)",
+    )
+    allow_rotation = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Customers can rotate the artwork",
+    )
+    allow_scaling = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Customers can zoom the artwork",
+    )
+    max_file_size_mb = forms.IntegerField(
+        required=False,
+        min_value=1,
+        label="Maximum image size (MB)",
+        help_text="Cannot exceed the store-wide customer upload limit.",
+    )
+    aspect_ratio_locked = forms.BooleanField(
+        required=False,
+        label="Lock the original aspect ratio",
+    )
+
+    def __init__(self, *args, canvas_width=0, canvas_height=0, **kwargs):
+        self.canvas_width = canvas_width
+        self.canvas_height = canvas_height
         super().__init__(*args, **kwargs)
-        self.fields["max_file_size_mb"].initial = settings.CUSTOMIZATION_MAX_UPLOAD_MB
+        upload_limit = settings.CUSTOMIZATION_MAX_UPLOAD_MB
+        self.fields["max_file_size_mb"].initial = upload_limit
+        self.fields["max_file_size_mb"].max_value = upload_limit
         self.fields["max_file_size_mb"].help_text = (
-            f"Cannot exceed the store-wide limit of {settings.CUSTOMIZATION_MAX_UPLOAD_MB} MB."
+            f"Cannot exceed the store-wide limit of {upload_limit} MB."
+        )
+        self.fields["rotation"].widget.attrs.update(
+            {"min": "-180", "max": "180", "step": "1"}
+        )
+        self.fields["max_file_size_mb"].widget.attrs.update(
+            {"min": "1", "max": str(upload_limit), "step": "1"}
         )
 
-    class Meta:
-        model = CustomizationZone
-        fields = (
-            "name",
-            "x",
-            "y",
-            "width",
-            "height",
-            "rotation",
-            "allow_rotation",
-            "allow_scaling",
-            "max_file_size_mb",
-            "aspect_ratio_locked",
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data:
+            return cleaned_data
+
+        if cleaned_data.get("full_face"):
+            cleaned_data.update(
+                {
+                    "x_ratio": 0.0,
+                    "y_ratio": 0.0,
+                    "width_ratio": 1.0,
+                    "height_ratio": 1.0,
+                }
+            )
+            return cleaned_data
+
+        ratio_fields = ("x_ratio", "y_ratio", "width_ratio", "height_ratio")
+        if any(cleaned_data.get(field) is None for field in ratio_fields):
+            raise forms.ValidationError(
+                "Draw a printable area or enable “Use the entire face”."
+            )
+
+        x = cleaned_data["x_ratio"]
+        y = cleaned_data["y_ratio"]
+        width = cleaned_data["width_ratio"]
+        height = cleaned_data["height_ratio"]
+
+        if width <= 0 or height <= 0:
+            self.add_error("width_ratio", "The printable area must have a positive size.")
+        if x + width > 1.000001:
+            self.add_error("width_ratio", "The printable area exceeds the mockup width.")
+        if y + height > 1.000001:
+            self.add_error("height_ratio", "The printable area exceeds the mockup height.")
+        if self.canvas_width and width * self.canvas_width < 1:
+            self.add_error("width_ratio", "The printable area is too narrow.")
+        if self.canvas_height and height * self.canvas_height < 1:
+            self.add_error("height_ratio", "The printable area is too short.")
+
+        max_size = cleaned_data.get("max_file_size_mb")
+        if max_size and max_size > settings.CUSTOMIZATION_MAX_UPLOAD_MB:
+            self.add_error(
+                "max_file_size_mb",
+                f"The limit cannot exceed the global cap of "
+                f"{settings.CUSTOMIZATION_MAX_UPLOAD_MB} MB.",
+            )
+
+        return cleaned_data
+
+    def build_zone(self, product_view):
+        """Return an unsaved ``CustomizationZone`` for the optimized side."""
+
+        name = (self.cleaned_data.get("name") or "").strip()
+        if not name:
+            name = f"{product_view.name} artwork"
+
+        if self.cleaned_data.get("full_face"):
+            x = 0.0
+            y = 0.0
+            width = float(product_view.canvas_width_px)
+            height = float(product_view.canvas_height_px)
+        else:
+            x = round(self.cleaned_data["x_ratio"] * product_view.canvas_width_px, 2)
+            y = round(self.cleaned_data["y_ratio"] * product_view.canvas_height_px, 2)
+            width = round(
+                self.cleaned_data["width_ratio"] * product_view.canvas_width_px, 2
+            )
+            height = round(
+                self.cleaned_data["height_ratio"] * product_view.canvas_height_px, 2
+            )
+
+        return CustomizationZone(
+            product_view=product_view,
+            name=name,
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            rotation=self.cleaned_data.get("rotation") or 0,
+            allow_rotation=self.cleaned_data.get("allow_rotation", True),
+            allow_scaling=self.cleaned_data.get("allow_scaling", True),
+            max_file_size_mb=(
+                self.cleaned_data.get("max_file_size_mb")
+                or settings.CUSTOMIZATION_MAX_UPLOAD_MB
+            ),
+            aspect_ratio_locked=self.cleaned_data.get("aspect_ratio_locked", False),
         )
-        labels = {
-            "name": "Area name",
-            "x": "X position (px)",
-            "y": "Y position (px)",
-            "width": "Width (px)",
-            "height": "Height (px)",
-            "rotation": "Default rotation (degrees)",
-            "allow_rotation": "Customers can rotate the artwork",
-            "allow_scaling": "Customers can zoom the artwork",
-            "max_file_size_mb": "Maximum image size (MB)",
-            "aspect_ratio_locked": "Lock the original aspect ratio",
-        }
-        help_texts = {
-            "x": "Distance from the left edge of the mockup.",
-            "y": "Distance from the top edge of the mockup.",
-            "width": "The area must fit inside the mockup width.",
-            "height": "The area must fit inside the mockup height.",
-            "max_file_size_mb": "Cannot exceed the store-wide upload limit shown on this page.",
-        }
-        widgets = {
-            "x": forms.NumberInput(attrs={"min": "0", "step": "1"}),
-            "y": forms.NumberInput(attrs={"min": "0", "step": "1"}),
-            "width": forms.NumberInput(attrs={"min": "1", "step": "1"}),
-            "height": forms.NumberInput(attrs={"min": "1", "step": "1"}),
-            "rotation": forms.NumberInput(attrs={"min": "-180", "max": "180", "step": "1"}),
-            "max_file_size_mb": forms.NumberInput(attrs={"min": "1", "step": "1"}),
-        }

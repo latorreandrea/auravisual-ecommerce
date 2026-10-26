@@ -5,7 +5,7 @@ from django.dispatch import receiver
 
 from .models import ProductView
 
-FILE_FIELDS = ("mockup_image", "overlay_texture")
+FILE_FIELDS = ("mockup_image",)
 
 
 def _delete_file(field, name):

@@ -71,7 +71,6 @@ def _editor_payload(product, views, draft):
                 "id": view.pk,
                 "name": view.name,
                 "mockup_url": view.mockup_image.url if view.mockup_image else "",
-                "overlay_url": view.overlay_texture.url if view.overlay_texture else "",
                 "canvas_width": view.canvas_width_px,
                 "canvas_height": view.canvas_height_px,
                 "zones": zones,
@@ -92,7 +91,10 @@ def _editor_payload(product, views, draft):
 
 @login_required
 def draft_list(request):
-    drafts = CustomizationDraft.objects.filter(user=request.user).select_related("product")
+    drafts = CustomizationDraft.objects.filter(
+        user=request.user,
+        product__is_active=True,
+    ).select_related("product")
     return render(request, "customization/list.html", {"drafts": drafts})
 
 
@@ -211,6 +213,7 @@ def draft_detail(request, draft_id):
         CustomizationDraft.objects.select_related("product"),
         pk=draft_id,
         user=request.user,
+        product__is_active=True,
     )
     configuration_views = (draft.configuration_json or {}).get("views", [])
     return render(
@@ -240,6 +243,7 @@ def draft_payload(request, draft_id):
         CustomizationDraft.objects.select_related("product"),
         pk=draft_id,
         user=request.user,
+        product__is_active=True,
     )
     preview_url = request.build_absolute_uri(draft.preview_url) if draft.preview_url else ""
     return JsonResponse(

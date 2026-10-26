@@ -22,9 +22,10 @@ The core goal is to let customers personalize the products before purchasing the
 - [Authentication](#authentication)
 - [Customization Workflow](#customization-workflow)
 - [Cart and Orders](#cart-and-orders)
+- [Product Catalogue Side Gallery](#product-catalogue-side-gallery)
 - [Frontend Structure](#frontend-structure)
 - [API Roadmap (Django Ninja + Stripe)](#api-roadmap-django-ninja--stripe)
-- [Testing & Validation](#testing--validation)
+- [Testing](#testing)
 - [Roadmap](#roadmap)
 - [License](#license)
 
@@ -60,10 +61,12 @@ Customers can:
 ## Core Features
 
 - **Home app** for index and entry pages.
-- **Products app** for base products and stock handling.
+- **Products app** for base products and stock handling, including a staff
+  three-step product creation wizard.
 - **Accounts app** for profile, shipping data and order history.
 - **Customization app** for customer visual customization workflows:
-  - per-product views (front/back), printable zones and mockups managed in admin;
+  - per-product views (front/back), printable zones and mockups managed in the
+    staff product wizard or the admin;
   - drag/resize/rotate editor with PNG, JPEG and WebP uploads;
   - saved drafts, optimized WebP previews and cart integration;
   - print-ready PNG (single view) or multi-page PDF (multiple views) output.
@@ -142,7 +145,8 @@ Always available:
 - `SECRET_KEY` (optional, has an insecure local-dev default)
 - `ALLOWED_HOSTS` (optional, defaults to `127.0.0.1,localhost`)
 - `ASSET_VERSION` (optional, defaults to `1`): cache-busting token appended to
-  `css/style.css` and `js/main.js` in the templates
+  `css/style.css`, `js/main.js`, `css/product-wizard.css` and
+  `js/product-wizard.js` in the templates
 
 Customization uploads and print output:
 
@@ -202,12 +206,25 @@ mode.
    python manage.py createsuperuser
    ```
 2. Sign in as a staff user and choose **Create product** in the navbar, or open
-   `/admin/`, to add products, product views and customization zones. The quick
-   form creates a product together with its first mockup view and printable area.
+   `/shop/create/`. The three-step wizard creates the product, one or more
+   product sides and exactly one printable area per side:
+   - **Step 1 – Product details:** title, description, base price, stock and
+     catalogue visibility.
+   - **Step 2 – Faces & print areas:** upload a mockup per side, preview it
+     locally in the browser, then draw, move or resize the printable rectangle.
+     Use **Entire face** when the whole optimized mockup may be customized.
+     A product supports up to eight sides.
+   - **Step 3 – Review:** confirm the details and each side's area, then create
+     everything in a single transaction.
+
+   The mockup is optimized on the server and the drawn ratios are converted to
+   pixels using the final optimized canvas dimensions. The Admin remains
+   available for later maintenance.
 3. Access:
    - `/` home (public)
    - `/shop/` product list (public)
-   - `/shop/create/` quick product creation (staff only)
+   - `/shop/create/` three-step product wizard (staff only)
+   - `/shop/<slug>/deactivate/` soft-delete a product (staff only, POST)
    - `/cart/` cart details (public)
    - `/accounts/login/` and `/accounts/signup/` authentication pages
    - `/orders/` user order list (authenticated)
@@ -246,7 +263,8 @@ Supported flows:
 | Customization editor and drafts | Redirected to login with `next` | Own drafts only | Own drafts only in the storefront |
 | Draft detail, payload, delete | Redirected to login | Own drafts only; others return `404` | Own drafts only; others return `404` |
 | `/admin/` | Login page | No access | Full admin access |
-| `/shop/create/` | Redirected to login | `403 Forbidden` | Quick product creation |
+| `/shop/create/` | Redirected to login | `403 Forbidden` | Three-step product wizard |
+| `/shop/<slug>/deactivate/` | Redirected to login | `403 Forbidden` | Deactivate (soft delete) product |
 | Print webhook | Token-protected | Token-protected | Token-protected |
 
 `LOGIN_URL` points to `account_login`, so every `@login_required` view redirects
@@ -270,11 +288,26 @@ URL already stored in `next`.
 
 ## Customization Workflow
 
-1. Create the product, its first **product view** and one **customization
-   zone** with the staff quick form at `/shop/create/`, or manage the full set
-   in admin. A view needs a mockup image plus `canvas_width_px` and
-   `canvas_height_px`; zones define printable x/y/width/height in canvas
-   pixels, rotation/scaling rules and an optional lower upload cap.
+1. Create the product with the staff wizard at `/shop/create/`, or manage the
+   full set in admin. The wizard saves a product, one or more **product views**
+   (sides) and exactly one **customization zone** per side. A view needs a
+   mockup image plus `canvas_width_px` and `canvas_height_px`; zones define
+   printable x/y/width/height in canvas pixels, rotation/scaling rules and an
+   optional lower upload cap.
+   - The uploaded mockup is optimized to WebP first. The rectangle is drawn as
+     ratios (`0..1`) in the browser and converted to pixels only after the
+     optimized canvas dimensions are known, preventing offsets between the
+     preview and the saved zone.
+   - **Entire face** stores `x=0`, `y=0`, `width=canvas_width_px` and
+     `height=canvas_height_px`.
+   - Side order is normalized to `1..n`; a product accepts from one to eight
+     sides. The default custom area is centered with a 10% inset.
+   - Staff can retire an existing product from the customization editor with
+     **Deactivate product**. The action sets `is_active=False`, so the product
+     disappears from the catalogue, editor, cart and saved-draft list while its
+     sides, zones, drafts and uploaded files remain intact. Reactivate it from
+     the Django admin, where `is_active` can be toggled inline in the product
+     list.
 2. A signed-in customer opens `/customization/product/<slug>/`, chooses a zone
    and uploads a PNG, JPEG or WebP image. Anonymous visitors are redirected to
    the login page, which invites them to create an account while preserving the
@@ -301,9 +334,12 @@ URL already stored in `next`.
 
 All customization views require authentication. Every queryset is filtered by
 `user=request.user`, so draft detail, payload, delete and update endpoints are
-owner-only; another customer's draft returns `404`. The webhook is the only
-machine-to-machine exception: it is CSRF-exempt but requires the configured
-token (compared in constant time) and never redirects to the login page.
+owner-only; another customer's draft returns `404`. Drafts that belong to an
+inactive product are hidden from `/customization/` and return `404` from the
+detail and payload endpoints until the product is reactivated. The webhook is
+the only machine-to-machine exception: it is CSRF-exempt but requires the
+configured token (compared in constant time) and never redirects to the login
+page.
 
 ---
 
@@ -313,6 +349,28 @@ token (compared in constant time) and never redirects to the login page.
 - A cart context processor exposes cart summary globally for templates.
 - Success toast includes a scrollable cart preview when cart items exist.
 - Error toast displays failure reason (e.g. stock not available).
+
+---
+
+## Product Catalogue Side Gallery
+
+Shop cards show the first product side as a preview and expose the other sides
+through an integrated mini-gallery:
+
+- the first side is server-rendered and remains visible without JavaScript;
+- desktop hover advances the sides every 1.5 seconds in a continuous loop, then
+  resets to the first side on `mouseleave`;
+- previous/next arrows, dots, touch swiping and keyboard arrows/Home/End are
+  available for manual control;
+- autoplay pauses on keyboard focus, hidden tabs, touch devices and
+  `prefers-reduced-motion`, and stays stopped after a manual action until the
+  pointer leaves and re-enters the card;
+- products with a single mockup render as a static image, while products without
+  any mockup render an aligned placeholder.
+
+Views are prefetched and ordered by `sort_order`, and only sides with a
+`mockup_image` enter the gallery. Only the first gallery image is `eager`; all
+remaining sides are `lazy`.
 
 ---
 
@@ -326,6 +384,15 @@ stay visually aligned.
   Re-syncing from upstream keeps everything above that banner untouched.
 - `static/js/main.js`: shared behaviour (fixed header state on scroll, mobile
   navigation toggle, dropdown expansion on mobile, section scroll-spy).
+- `static/js/product-wizard.js`: staff-only wizard behaviour (step navigation,
+  local mockup previews, add/remove/reorder sides, rectangle drawing, moving,
+  resizing, keyboard controls, review rendering and AJAX submission).
+- `static/js/product-gallery.js`: catalogue-card side gallery (clone-based
+  looping, hover autoplay on fine pointers, arrows, dots, touch swipe, keyboard
+  navigation/pausing and reduced-motion support).
+- `static/css/product-wizard.css`: wizard layout, stepper, face tabs,
+  checkerboard stage, printable rectangle and handles, review cards, responsive
+  rules and reduced-motion support.
 - `templates/base.html`: SEO/Open Graph meta blocks, JSON-LD structured data,
   Bootstrap + Bootstrap Icons + Google Fonts, and a `{% block extra_css %}` /
   `{% block extra_js %}` extension point.
@@ -346,7 +413,7 @@ its own markup:
 | App | Templates |
 | --- | --- |
 | `home` | `home/templates/home/index.html` |
-| `products` | `products/templates/products/list.html` |
+| `products` | `products/templates/products/list.html`, `products/templates/products/create_product.html` and `products/templates/products/partials/face_form.html` |
 | `cart` | `cart/templates/cart/detail.html` |
 | `orders` | `orders/templates/orders/list.html` |
 | `customization` | `customization/templates/customization/*.html` |
@@ -412,28 +479,99 @@ Recommended best practices for the next step:
 
 ---
 
-## Testing & Validation
+## Testing
 
-Baseline checks:
+### Automated checks
 
-```bash
-python manage.py makemigrations --check --dry-run
-python manage.py migrate
-python manage.py check
-```
-
-Tests (temporary media root, no external services required):
+Run the product-focused suite first, then the full project suite and deployment checks:
 
 ```bash
+python manage.py test products
 python manage.py test
+python manage.py check
+python manage.py makemigrations --check --dry-run
+git diff --check
 ```
+
+Expected result: all tests pass, `check` reports no issues, no migrations are
+generated, and `git diff --check` reports no whitespace errors. Tests use a
+temporary `MEDIA_ROOT`, so no uploaded mockups are left in the project.
+
+The product suite covers:
+
+- anonymous redirects to login and `403` responses for authenticated non-staff
+  users;
+- the three-step wizard markup, management form and default single side;
+- creating one side or multiple sides with exactly one printable area per side;
+- normalized side order and per-side canvas dimensions after WebP optimization;
+- ratio-to-pixel conversion against the **optimized** canvas, including resized
+  mockups and **Entire face** zones;
+- rejection of missing sides, more than eight sides, out-of-bounds rectangles
+  and missing mockups;
+- persistence of advanced zone settings, stock and catalogue visibility;
+- structured AJAX validation errors (step, face and field names) without partial
+  database writes, plus the successful JSON redirect response;
+- the catalogue side gallery: ordered mockup-only views, prefetched relations,
+  accessible arrows/dots, an eager first image, lazy remaining sides and the
+  placeholder for products without mockups;
+- staff-only soft deletion: the POST flips `is_active`, hides the product from
+  the catalogue and editor while preserving its views, zones and drafts, treats
+  a repeat request as idempotent and rejects anonymous, non-staff and non-POST
+  requests.
 
 The `customization` suite covers upload limits and formats, EXIF orientation,
 draft save/replace/delete asset cleanup, preview generation, cart integration,
 single-view PNG and multi-view PDF output, webhook authentication, anonymous
-login redirects and cross-user draft isolation. The `accounts`, `products` and
+login redirects, cross-user draft isolation, the staff-only deactivation action
+and the hiding of drafts that belong to inactive products. The `accounts` and
 `cart` suites cover the signup/login `next` flow, the customization signup
 invitation, staff-only admin access and the anonymous customization CTAs.
+
+### Manual QA: product wizard
+
+Use a staff account and open `/shop/create/`:
+
+1. **Access and navigation**
+   - Sign out and confirm the URL redirects to login with `next=/shop/create/`.
+   - Sign in as a customer and confirm `403 Forbidden`.
+   - Sign in as staff and confirm steps 1–3 render, only step 1 is visible, and
+     the progress bar and stepper match the current step.
+2. **Product details**
+   - Submit empty required fields and confirm the wizard stays on step 1 and
+     highlights the fields.
+   - Enter a title, description, price, stock and visibility.
+3. **Faces and print areas**
+   - Upload a transparent PNG; confirm the preview appears immediately and the
+     image was not uploaded before final submit (check the Network panel).
+   - Draw a new rectangle, move it, resize it from all eight handles, and use
+     the arrow keys plus `Shift` + arrow keys.
+   - Change the numeric percentages and confirm the rectangle follows.
+   - Enable **Entire face** and confirm the handles disappear; disable it and
+     confirm the previous custom rectangle returns.
+   - Add sides, rename them, reorder them, and remove one. Confirm the
+     **Add side** button disables at eight sides and the last side cannot be
+     removed.
+   - Submit without a mockup and confirm the active side is selected with a
+     native validation message.
+4. **Review and persistence**
+   - Confirm the review shows the product values and every side with its preview
+     and area summary.
+   - Create the product and confirm the success toast and catalogue redirect.
+   - In Admin, confirm each `ProductView` has the expected `sort_order`,
+     `canvas_width_px` and `canvas_height_px`, and exactly one
+     `CustomizationZone` whose pixel rectangle fits inside the optimized canvas.
+   - Open the customer editor and confirm the saved area lines up with the same
+     mockup.
+5. **Failure and fallback paths**
+   - Submit an invalid or oversized mockup via AJAX and confirm the affected
+     step/side is shown, errors are attached to the fields or area, and nothing
+     is saved.
+   - Disable JavaScript and confirm all three steps remain visible, the
+     server-rendered side defaults to **Entire face**, and the form still submits
+     normally.
+   - Test at 375 px, 768 px and desktop widths, with keyboard-only navigation
+     and `prefers-reduced-motion` enabled.
+
 
 ---
 
