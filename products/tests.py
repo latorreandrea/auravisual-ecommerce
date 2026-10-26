@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.test.html import Element, parse_html
 from django.urls import reverse
 
 from customization.models import CustomizationDraft
@@ -521,6 +522,43 @@ class ProductListGalleryTests(TestCase):
         left_position = html.index('alt="Gallery card - Left side"')
         self.assertLess(front_position, back_position)
         self.assertLess(back_position, left_position)
+
+    def test_gallery_controls_place_dots_between_the_arrows(self):
+        response = self.client.get(reverse("products:list"))
+        html = response.content.decode()
+        dom = parse_html(html)
+
+        controls = None
+        pending = [dom]
+        while pending:
+            node = pending.pop()
+            if not isinstance(node, Element):
+                continue
+            if dict(node.attributes).get("class") == "product-gallery-controls":
+                controls = node
+                break
+            pending.extend(reversed(node.children))
+
+        self.assertIsNotNone(controls)
+        children = [
+            child for child in controls.children if isinstance(child, Element)
+        ]
+        self.assertEqual(
+            [child.name for child in children],
+            ["button", "div", "button"],
+        )
+        self.assertIn(("data-gallery-prev", ""), children[0].attributes)
+        self.assertEqual(
+            dict(children[1].attributes).get("class"),
+            "product-gallery-dots",
+        )
+        self.assertIn(("data-gallery-next", ""), children[2].attributes)
+
+        viewport_position = html.index('class="product-gallery-viewport"')
+        controls_position = html.index('class="product-gallery-controls"')
+        title_position = html.index("<h3>Gallery card</h3>")
+        self.assertLess(viewport_position, controls_position)
+        self.assertLess(controls_position, title_position)
 
     def test_first_gallery_image_is_eager_and_the_rest_are_lazy(self):
         response = self.client.get(reverse("products:list"))

@@ -73,13 +73,6 @@
                                 aria-controls="product-gallery-{{ product.pk }}">
                             <i class="bi bi-chevron-left" aria-hidden="true"></i>
                         </button>
-                        <button type="button"
-                                class="product-gallery-arrow product-gallery-arrow-next"
-                                data-gallery-next
-                                aria-label="Next side"
-                                aria-controls="product-gallery-{{ product.pk }}">
-                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
-                        </button>
                         <div class="product-gallery-dots" role="group" aria-label="Choose a product side">
                             {% for view in product.gallery_views %}
                             <button type="button"
@@ -90,6 +83,13 @@
                                     {% if forloop.first %}aria-current="true"{% endif %}></button>
                             {% endfor %}
                         </div>
+                        <button type="button"
+                                class="product-gallery-arrow product-gallery-arrow-next"
+                                data-gallery-next
+                                aria-label="Next side"
+                                aria-controls="product-gallery-{{ product.pk }}">
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </button>
                     </div>
                     <p class="visually-hidden"
                        aria-live="polite"

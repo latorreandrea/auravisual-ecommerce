@@ -2518,56 +2518,56 @@ html {
 }
 
 /* Controls stay hidden until product-gallery.js marks the gallery as enhanced,
-   so the first side remains usable when JavaScript is unavailable. */
+   so the first side remains usable when JavaScript is unavailable. Once
+   enhanced, they form a single row between the image and the product title. */
 .product-gallery-controls {
   display: none;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(14, 58, 82, 0.08);
+  background: #fff;
 }
 
 .product-card-gallery.is-enhanced .product-gallery-controls {
-  display: block;
+  display: grid;
 }
 
 .product-gallery-arrow {
-  position: absolute;
-  top: 50%;
-  z-index: 3;
   display: inline-flex;
   width: 38px;
   height: 38px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 0;
+  border: 1px solid rgba(14, 58, 82, 0.12);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 4px 14px rgba(14, 58, 82, 0.18);
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(14, 58, 82, 0.1);
   color: rgb(14, 58, 82);
   font-size: 1.05rem;
   line-height: 1;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-50%);
-  transition: opacity 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease,
+    transform 0.2s ease, box-shadow 0.2s ease;
   cursor: pointer;
 }
 
 .product-gallery-arrow-prev {
-  left: 10px;
+  grid-column: 1;
+  justify-self: start;
 }
 
 .product-gallery-arrow-next {
-  right: 10px;
-}
-
-.product-card:hover .product-gallery-arrow,
-.product-card:focus-within .product-gallery-arrow {
-  opacity: 1;
-  pointer-events: auto;
+  grid-column: 3;
+  justify-self: end;
 }
 
 .product-gallery-arrow:hover {
-  background: #fff;
-  transform: translateY(-50%) scale(1.06);
+  border-color: rgba(20, 146, 106, 0.32);
+  background: #f4fbf8;
+  box-shadow: 0 5px 14px rgba(14, 58, 82, 0.14);
+  transform: scale(1.05);
 }
 
 .product-gallery-arrow:focus-visible {
@@ -2576,21 +2576,15 @@ html {
 }
 
 .product-gallery-dots {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  z-index: 3;
   display: flex;
+  grid-column: 2;
   align-items: center;
+  justify-self: center;
   gap: 2px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(14, 58, 82, 0.4);
-  box-shadow: 0 2px 10px rgba(14, 58, 82, 0.12);
-  transform: translateX(-50%);
-  pointer-events: auto;
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
+  background: #f4f8f7;
+  box-shadow: inset 0 0 0 1px rgba(14, 58, 82, 0.06);
 }
 
 .product-gallery-dot {
@@ -2610,13 +2604,13 @@ html {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
+  background: rgba(14, 58, 82, 0.28);
   transition: width 0.2s ease, background-color 0.2s ease;
   content: "";
 }
 
 .product-gallery-dot:hover::before {
-  background: #fff;
+  background: rgba(14, 58, 82, 0.55);
 }
 
 .product-gallery-dot[aria-current="true"]::before {
@@ -2625,30 +2619,19 @@ html {
 }
 
 .product-gallery-dot:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid #14926a;
   outline-offset: 0;
 }
 
-/* Touch devices have no hover state, so keep the arrows visible. */
-@media (hover: none) {
-  .product-card-gallery.is-enhanced .product-gallery-arrow {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
-
 @media (max-width: 575.98px) {
+  .product-gallery-controls {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
   .product-gallery-arrow {
     width: 34px;
     height: 34px;
-  }
-
-  .product-gallery-arrow-prev {
-    left: 8px;
-  }
-
-  .product-gallery-arrow-next {
-    right: 8px;
   }
 
   .product-gallery-label,
@@ -2662,10 +2645,6 @@ html {
 
   .product-gallery-count {
     right: 10px;
-  }
-
-  .product-gallery-dots {
-    bottom: 8px;
   }
 }
 
