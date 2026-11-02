@@ -130,11 +130,14 @@ PRODUCT_MOCKUP_WEBP_QUALITY = int(os.environ.get("PRODUCT_MOCKUP_WEBP_QUALITY", 
 PRODUCT_MOCKUP_MAX_UPLOAD_MB = int(os.environ.get("PRODUCT_MOCKUP_MAX_UPLOAD_MB", "20"))
 PRODUCT_MOCKUP_MAX_PIXELS = int(os.environ.get("PRODUCT_MOCKUP_MAX_PIXELS", "40000000"))
 
-# Customer uploads: the per-image cap is a hard limit, while each
-# CustomizationZone can only lower it.
+# Customer uploads: the per-image cap is a hard limit, while each product side
+# can only lower it.
 CUSTOMIZATION_MAX_UPLOAD_MB = int(os.environ.get("CUSTOMIZATION_MAX_UPLOAD_MB", "10"))
 CUSTOMIZATION_MAX_TOTAL_UPLOAD_MB = int(os.environ.get("CUSTOMIZATION_MAX_TOTAL_UPLOAD_MB", "50"))
 CUSTOMIZATION_MAX_IMAGE_PIXELS = int(os.environ.get("CUSTOMIZATION_MAX_IMAGE_PIXELS", "40000000"))
+CUSTOMIZATION_PREVIEW_MAX_WIDTH = int(
+    os.environ.get("CUSTOMIZATION_PREVIEW_MAX_WIDTH", "1200")
+)
 CUSTOMIZATION_PREVIEW_MAX_BYTES = int(
     os.environ.get("CUSTOMIZATION_PREVIEW_MAX_BYTES", str(100 * 1024))
 )
@@ -151,6 +154,12 @@ CUSTOMIZATION_PRINT_ASYNC = os.environ.get("CUSTOMIZATION_PRINT_ASYNC", "1").str
 # Shared secret used by the external checkout/cart app when notifying that an
 # order has been paid. Keep it empty to disable the webhook.
 CUSTOMIZATION_PRINT_WEBHOOK_SECRET = os.environ.get("CUSTOMIZATION_PRINT_WEBHOOK_SECRET", "")
+
+# Pagination: catalogue and workspace grids are paginated so the queryset never
+# loads the whole table. Both values come from the environment (see .env) and
+# the settings are read at startup only.
+PRODUCTS_PAGE_SIZE = int(os.environ.get("PRODUCTS_PAGE_SIZE", "12"))
+PROJECTS_PAGE_SIZE = int(os.environ.get("PROJECTS_PAGE_SIZE", "8"))
 
 # Cache-busting version appended to static assets from the templates
 # (see auravisual_ecommerce/context.py and {% static %}?v={{ ASSET_VERSION }}).

@@ -30,6 +30,9 @@
     </div>
 
     {% if products %}
+    <p class="list-summary">
+        {{ total_products }} active {{ total_products|pluralize:"product,products" }} in the catalogue
+    </p>
     <div class="row g-4">
         {% for product in products %}
         <div class="col-md-6 col-lg-4">
@@ -113,7 +116,11 @@
                     </span>
                 </p>
                 <div class="product-card-actions d-grid gap-2">
-                    {% if user.is_authenticated %}
+                    {% if not product.has_customizable_sides %}
+                    <p class="product-meta mb-0 text-center">
+                        <i class="bi bi-lock me-2"></i>Sold as shown, no customizable sides
+                    </p>
+                    {% elif user.is_authenticated %}
                     <a href="{{ product.get_absolute_url }}" class="btn-get-started justify-content-center">
                         <i class="bi bi-palette me-2"></i>Customize
                     </a>
@@ -133,6 +140,7 @@
         </div>
         {% endfor %}
     </div>
+    {% include "partials/pagination.html" %}
     {% else %}
     <p class="text-center mb-0">No products are available right now.</p>
     {% endif %}

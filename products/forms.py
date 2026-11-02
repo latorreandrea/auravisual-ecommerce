@@ -3,7 +3,7 @@ from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 from django.forms import inlineformset_factory
 
-from .models import CustomizationZone, Product, ProductView
+from .models import Product, ProductView
 from .services.images import optimize_mockup
 
 MAX_PRODUCT_VIEWS = 8
@@ -99,24 +99,31 @@ ProductViewFormSet = inlineformset_factory(
 )
 
 
-class PrintAreaForm(BootstrapFormMixin, forms.Form):
-    """One printable area for a product side.
+class SideAreaForm(BootstrapFormMixin, forms.Form):
+    """Printable area of one product side, drawn in the staff wizard.
 
     The browser draws a rectangle and submits normalized ratios. They are
     converted to pixels only after ``optimize_mockup`` has stored the final
-    canvas dimensions, so the saved zone always matches the optimized mockup
+    canvas dimensions, so the saved area always matches the optimized mockup
     used by the customer editor and the renderer.
+
+    Unchecking ``customizable`` turns the side into a fixed side: no area is
+    saved, the side is never offered to the customer and it is printed exactly
+    as its mockup.
     """
 
-    name = forms.CharField(
+    customizable = forms.BooleanField(
         required=False,
-        max_length=80,
-        label="Area name",
-        help_text="Shown in the customer editor. Defaults to the side name.",
+        initial=True,
+        label="Customers can customize this side",
+        help_text=(
+            "Uncheck it for a fixed side: customers will only see the mockup, "
+            "and the side is printed unchanged."
+        ),
     )
     full_face = forms.BooleanField(
         required=False,
-        label="Use the entire face",
+        label="Use the entire side",
         help_text="Make the whole optimized mockup available for customization.",
     )
     x_ratio = forms.FloatField(
@@ -193,6 +200,10 @@ class PrintAreaForm(BootstrapFormMixin, forms.Form):
         if not cleaned_data:
             return cleaned_data
 
+        # A fixed side has no printable area: nothing else to validate.
+        if not cleaned_data.get("customizable"):
+            return cleaned_data
+
         if cleaned_data.get("full_face"):
             cleaned_data.update(
                 {
@@ -207,7 +218,8 @@ class PrintAreaForm(BootstrapFormMixin, forms.Form):
         ratio_fields = ("x_ratio", "y_ratio", "width_ratio", "height_ratio")
         if any(cleaned_data.get(field) is None for field in ratio_fields):
             raise forms.ValidationError(
-                "Draw a printable area or enable “Use the entire face”."
+                "Draw a printable area, enable “Use the entire side” or uncheck "
+                "“Customers can customize this side”."
             )
 
         x = cleaned_data["x_ratio"]
@@ -236,41 +248,39 @@ class PrintAreaForm(BootstrapFormMixin, forms.Form):
 
         return cleaned_data
 
-    def build_zone(self, product_view):
-        """Return an unsaved ``CustomizationZone`` for the optimized side."""
+    def apply_to(self, product_view):
+        """Store the drawn area (or the fixed-side flag) on the product side."""
 
-        name = (self.cleaned_data.get("name") or "").strip()
-        if not name:
-            name = f"{product_view.name} artwork"
-
-        if self.cleaned_data.get("full_face"):
-            x = 0.0
-            y = 0.0
-            width = float(product_view.canvas_width_px)
-            height = float(product_view.canvas_height_px)
+        if not self.cleaned_data.get("customizable"):
+            product_view.make_fixed()
         else:
-            x = round(self.cleaned_data["x_ratio"] * product_view.canvas_width_px, 2)
-            y = round(self.cleaned_data["y_ratio"] * product_view.canvas_height_px, 2)
-            width = round(
-                self.cleaned_data["width_ratio"] * product_view.canvas_width_px, 2
-            )
-            height = round(
-                self.cleaned_data["height_ratio"] * product_view.canvas_height_px, 2
-            )
+            if self.cleaned_data.get("full_face"):
+                x = 0.0
+                y = 0.0
+                width = float(product_view.canvas_width_px)
+                height = float(product_view.canvas_height_px)
+            else:
+                x = round(self.cleaned_data["x_ratio"] * product_view.canvas_width_px, 2)
+                y = round(self.cleaned_data["y_ratio"] * product_view.canvas_height_px, 2)
+                width = round(
+                    self.cleaned_data["width_ratio"] * product_view.canvas_width_px, 2
+                )
+                height = round(
+                    self.cleaned_data["height_ratio"] * product_view.canvas_height_px, 2
+                )
+            product_view.print_x = x
+            product_view.print_y = y
+            product_view.print_width = width
+            product_view.print_height = height
 
-        return CustomizationZone(
-            product_view=product_view,
-            name=name,
-            x=x,
-            y=y,
-            width=width,
-            height=height,
-            rotation=self.cleaned_data.get("rotation") or 0,
-            allow_rotation=self.cleaned_data.get("allow_rotation", True),
-            allow_scaling=self.cleaned_data.get("allow_scaling", True),
-            max_file_size_mb=(
-                self.cleaned_data.get("max_file_size_mb")
-                or settings.CUSTOMIZATION_MAX_UPLOAD_MB
-            ),
-            aspect_ratio_locked=self.cleaned_data.get("aspect_ratio_locked", False),
+        product_view.rotation = float(self.cleaned_data.get("rotation") or 0)
+        product_view.allow_rotation = bool(self.cleaned_data.get("allow_rotation"))
+        product_view.allow_scaling = bool(self.cleaned_data.get("allow_scaling"))
+        product_view.aspect_ratio_locked = bool(
+            self.cleaned_data.get("aspect_ratio_locked")
         )
+        product_view.max_file_size_mb = (
+            self.cleaned_data.get("max_file_size_mb")
+            or settings.CUSTOMIZATION_MAX_UPLOAD_MB
+        )
+        return product_view

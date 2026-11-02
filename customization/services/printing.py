@@ -1,42 +1,67 @@
-"""Deferred generation of the print-ready files for paid customizations."""
+"""Deferred generation of the print-ready archive for paid customizations."""
 
 import io
+import re
+import zipfile
 from uuid import uuid4
 
-from PIL import Image
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 
-from .rendering import _group_items_by_view, render_view
+from .rendering import configuration_views, flatten_on_white, render_view
+
+INVALID_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9 _-]+")
 
 
-def _flatten_on_white(image):
-    flat = Image.new("RGB", image.size, "white")
-    flat.paste(image, mask=image.getchannel("A"))
-    return flat
+def _side_filename(view, used_names):
+    """A readable, unique file name for one printed side."""
+
+    base = INVALID_FILENAME_CHARS.sub("", view.name or "").strip()
+    base = re.sub(r"\s+", " ", base) or f"side-{view.sort_order}"
+    candidate = base
+    suffix = 2
+    while candidate.lower() in used_names:
+        candidate = f"{base} ({suffix})"
+        suffix += 1
+    used_names.add(candidate.lower())
+    return f"{candidate}.png"
 
 
-def _build_print_images(draft):
-    configuration = draft.configuration_json or {}
-    items_by_view = _group_items_by_view(configuration)
-    views = {view.pk: view for view in draft.product.views.prefetch_related("zones").all()}
+def _build_print_entries(draft):
+    """Return ``(filename, image)`` for every side that must be printed.
 
-    rendered = []
-    for view_id, zone_items in items_by_view.items():
-        view = views.get(view_id)
-        if view is None or not zone_items:
+    Fixed sides are printed exactly as their mockup; customizable sides are
+    printed only when the customer added an image to them.
+    """
+
+    views_by_id = {view.pk: view for view in draft.product.views.all()}
+    entries_by_view = {
+        entry.get("product_view_id"): entry
+        for entry in configuration_views(draft.configuration_json)
+    }
+
+    printed = []
+    used_names = set()
+    for view_id, view in views_by_id.items():
+        entry = entries_by_view.get(view_id)
+        if entry is None and view.is_customizable:
             continue
-        rendered.append(_flatten_on_white(render_view(view, zone_items)))
+        image = flatten_on_white(render_view(view, entry))
+        printed.append((_side_filename(view, used_names), image))
 
-    if not rendered:
+    if not printed:
         raise ValidationError("There is nothing to print for this customization.")
-    return rendered
+    return printed
 
 
 def generate_print_file(draft, force=False):
-    """Create one PNG (single view) or PDF (multiple views) at print resolution."""
+    """Create one ZIP archive that holds a print-resolution PNG per side.
+
+    CardPresso consumes the archive directly, so the store never keeps loose
+    print files around: one draft maps to exactly one stored object.
+    """
 
     if (
         draft.print_file_url
@@ -45,24 +70,18 @@ def generate_print_file(draft, force=False):
     ):
         return draft
 
-    images = _build_print_images(draft)
+    entries = _build_print_entries(draft)
     dpi = settings.CUSTOMIZATION_PRINT_DPI
+
     buffer = io.BytesIO()
+    # PNGs are already compressed: ZIP_STORED keeps the archive fast to build.
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
+        for filename, image in entries:
+            payload = io.BytesIO()
+            image.save(payload, format="PNG", dpi=(dpi, dpi), optimize=True)
+            archive.writestr(filename, payload.getvalue())
 
-    if len(images) == 1:
-        images[0].save(buffer, format="PNG", dpi=(dpi, dpi), optimize=True)
-        extension = "png"
-    else:
-        images[0].save(
-            buffer,
-            format="PDF",
-            resolution=dpi,
-            save_all=True,
-            append_images=images[1:],
-        )
-        extension = "pdf"
-
-    filename = f"{uuid4().hex}-print.{extension}"
+    filename = f"{uuid4().hex}.zip"
     draft.print_file_url.save(
         filename,
         ContentFile(buffer.getvalue(), name=filename),

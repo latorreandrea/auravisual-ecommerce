@@ -1,14 +1,23 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 
 from .models import CustomizationDraft
+from .services.printing import generate_print_file
 
 
 @admin.register(CustomizationDraft)
 class CustomizationDraftAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "product", "preview_thumb", "print_ready", "created_at")
+    list_display = (
+        "display_name",
+        "user",
+        "product",
+        "side_count",
+        "preview_thumb",
+        "print_ready",
+        "updated_at",
+    )
     list_filter = ("product", "created_at")
-    search_fields = ("id", "user__username", "user__email", "product__title")
+    search_fields = ("id", "name", "user__username", "user__email", "product__title")
     readonly_fields = (
         "id",
         "user",
@@ -20,10 +29,23 @@ class CustomizationDraftAdmin(admin.ModelAdmin):
         "updated_at",
     )
     fieldsets = (
-        ("Draft", {"fields": ("id", "user", "product", "created_at", "updated_at")}),
+        (
+            "Project",
+            {
+                "fields": (
+                    "id",
+                    "name",
+                    "user",
+                    "product",
+                    "created_at",
+                    "updated_at",
+                )
+            },
+        ),
         ("Configuration", {"fields": ("configuration_json",)}),
         ("Generated files", {"fields": ("preview_thumb", "print_file_url")}),
     )
+    actions = ("regenerate_print_file",)
 
     @admin.display(description="Preview")
     def preview_thumb(self, obj):
@@ -40,3 +62,29 @@ class CustomizationDraftAdmin(admin.ModelAdmin):
     def print_ready(self, obj):
         return bool(obj.print_file_url)
 
+    @admin.display(description="Sides")
+    def side_count(self, obj):
+        return len((obj.configuration_json or {}).get("views", []))
+
+    @admin.action(description="Generate print file (ZIP with one PNG per side)")
+    def regenerate_print_file(self, request, queryset):
+        generated = 0
+        failed = 0
+        for draft in queryset.select_related("product"):
+            try:
+                generate_print_file(draft, force=True)
+                generated += 1
+            except Exception:
+                failed += 1
+        if generated:
+            self.message_user(
+                request,
+                f"{generated} print file(s) generated.",
+                level=messages.SUCCESS,
+            )
+        if failed:
+            self.message_user(
+                request,
+                f"{failed} print file(s) could not be generated.",
+                level=messages.ERROR,
+            )

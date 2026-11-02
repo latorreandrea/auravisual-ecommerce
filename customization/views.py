@@ -15,6 +15,8 @@ from django.views.decorators.http import require_POST
 
 from products.models import Product
 
+from auravisual_ecommerce.pagination import paginate
+
 from .models import CustomizationDraft
 from .services.assets import delete_assets, validate_total_upload_size
 from .services.configuration import build_configuration, load_configuration
@@ -28,44 +30,29 @@ def _editor_payload(product, views, draft):
     existing = {}
     if draft:
         for view_entry in (draft.configuration_json or {}).get("views", []):
-            view_id = str(view_entry.get("product_view_id"))
-            for zone_entry in view_entry.get("zones", []):
-                existing.setdefault(view_id, {})[str(zone_entry.get("zone_id"))] = {
-                    "asset_path": zone_entry.get("asset_path", ""),
-                    "asset_url": zone_entry.get("asset_url", ""),
-                    "original_name": zone_entry.get("original_name", ""),
-                    "natural_width": zone_entry.get("natural_width", 0),
-                    "natural_height": zone_entry.get("natural_height", 0),
-                    "transform": zone_entry.get("transform", {}),
-                }
+            image = view_entry.get("image") or {}
+            if not image.get("asset_path"):
+                continue
+            existing[str(view_entry.get("product_view_id"))] = {
+                "asset_path": image.get("asset_path", ""),
+                "asset_url": image.get("asset_url", ""),
+                "original_name": image.get("original_name", ""),
+                "natural_width": image.get("natural_width", 0),
+                "natural_height": image.get("natural_height", 0),
+                "transform": image.get("transform", {}),
+            }
 
     payload_views = []
     for view in views:
-        # Views without a saved mockup resolution cannot be edited: their zone
-        # coordinates would be rendered as invalid CSS percentages.
+        # Fixed sides are never sent to the editor: customers can only
+        # customize the sides that carry a printable area.
+        if not view.is_customizable:
+            continue
+        # Views without a saved mockup resolution cannot be edited: their
+        # area coordinates would be rendered as invalid CSS percentages.
         if not view.canvas_width_px or not view.canvas_height_px:
             continue
-        zones = []
-        for zone in view.zones.all():
-            max_bytes = zone.effective_max_file_size_mb * 1024 * 1024
-            zones.append(
-                {
-                    "id": zone.pk,
-                    "name": zone.name,
-                    "x": zone.x,
-                    "y": zone.y,
-                    "width": zone.width,
-                    "height": zone.height,
-                    "rotation": zone.rotation,
-                    "allow_rotation": zone.allow_rotation,
-                    "allow_scaling": zone.allow_scaling,
-                    "aspect_ratio_locked": zone.aspect_ratio_locked,
-                    "max_file_size_mb": zone.effective_max_file_size_mb,
-                    "max_upload_bytes": max_bytes,
-                }
-            )
-        if not zones:
-            continue
+        area = view.print_area
         payload_views.append(
             {
                 "id": view.pk,
@@ -73,13 +60,25 @@ def _editor_payload(product, views, draft):
                 "mockup_url": view.mockup_image.url if view.mockup_image else "",
                 "canvas_width": view.canvas_width_px,
                 "canvas_height": view.canvas_height_px,
-                "zones": zones,
+                "print_area": {
+                    "x": area.x,
+                    "y": area.y,
+                    "width": area.width,
+                    "height": area.height,
+                    "rotation": area.rotation,
+                    "allow_rotation": area.allow_rotation,
+                    "allow_scaling": area.allow_scaling,
+                    "aspect_ratio_locked": area.aspect_ratio_locked,
+                },
+                "max_file_size_mb": area.effective_max_file_size_mb,
+                "max_upload_bytes": area.effective_max_file_size_mb * 1024 * 1024,
             }
         )
 
     return {
         "product": {"id": product.pk, "title": product.title, "slug": product.slug},
         "draft_id": str(draft.pk) if draft else "",
+        "draft_name": draft.name if draft else "",
         "save_url": reverse("customization:draft_save"),
         "editor_url": reverse("customization:editor", kwargs={"slug": product.slug}),
         "max_upload_bytes": settings.CUSTOMIZATION_MAX_UPLOAD_MB * 1024 * 1024,
@@ -95,13 +94,23 @@ def draft_list(request):
         user=request.user,
         product__is_active=True,
     ).select_related("product")
-    return render(request, "customization/list.html", {"drafts": drafts})
+    # Newest first (model Meta) and paginated in SQL, like the catalogue.
+    page_obj, page_context = paginate(request, drafts, settings.PROJECTS_PAGE_SIZE)
+    return render(
+        request,
+        "customization/list.html",
+        {
+            "drafts": page_obj.object_list,
+            "total_drafts": page_obj.paginator.count,
+            **page_context,
+        },
+    )
 
 
 @login_required
 def editor(request, slug):
     product = get_object_or_404(Product, slug=slug, is_active=True)
-    views = list(product.views.prefetch_related("zones"))
+    views = list(product.views.all())
 
     draft = None
     draft_id = request.GET.get("draft")
@@ -119,7 +128,11 @@ def editor(request, slug):
 
     editor_payload = _editor_payload(product, views, draft)
     if not editor_payload["views"]:
-        messages.warning(request, "This product has no customizable areas yet.")
+        messages.warning(
+            request,
+            f'"{product.title}" has no customizable sides yet: the product is '
+            "printed exactly as it is shown.",
+        )
 
     return render(
         request,
@@ -169,10 +182,12 @@ def draft_save(request):
         if not field_name.startswith("asset_"):
             continue
         try:
-            zone_id = int(field_name.split("_", 1)[1])
+            view_id = int(field_name.split("_", 1)[1])
         except (TypeError, ValueError):
             continue
-        uploaded_files[zone_id] = uploaded_file
+        uploaded_files[view_id] = uploaded_file
+
+    project_name = (request.POST.get("name") or "").strip()[:120]
 
     try:
         validate_total_upload_size(request.FILES.values())
@@ -186,6 +201,7 @@ def draft_save(request):
             messages.error(request, message)
         return _editor_redirect(product, draft)
 
+    draft.name = project_name or draft.name
     draft.configuration_json = configuration
     # The generated files are derived from the configuration: drop them so the
     # UI never shows a preview or print file that belongs to an older design.

@@ -1111,3 +1111,89 @@
   }
 }
 
+
+/* Customizable / fixed side toggle ---------------------------------------- */
+.wizard-customizable {
+  padding: 14px 16px;
+  border: 1px solid rgba(14, 58, 82, 0.12);
+  border-radius: 14px;
+  background: rgba(26, 204, 141, 0.06);
+}
+
+.wizard-customizable .form-check {
+  margin-bottom: 0.35rem;
+}
+
+.wizard-fixed-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(180, 83, 9, 0.3);
+  border-left: 4px solid #d97706;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #7c4a03;
+  font-size: 0.87rem;
+  line-height: 1.5;
+}
+
+.wizard-fixed-note[hidden] {
+  display: none;
+}
+
+.wizard-fixed-note > i {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #b45309;
+  font-size: 1.05rem;
+}
+
+.wizard-fixed-note strong {
+  display: block;
+  margin-bottom: 2px;
+  color: #7c2d12;
+}
+
+.wizard-fixed-note em {
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* Fixed sides keep the mockup preview, minus the printable-area controls -- */
+.wizard-stage-fixed {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px dashed rgba(14, 58, 82, 0.4);
+  border-radius: 12px;
+  background: rgba(14, 58, 82, 0.06);
+  color: #1e4356;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.wizard-stage-fixed[hidden] {
+  display: none;
+}
+
+.wizard-stage-fixed > i {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.wizard-area-editor.is-fixed .wizard-area-help,
+.wizard-area-editor.is-fixed .wizard-stage-hint {
+  display: none;
+}
+
+.wizard-area-editor.is-fixed .wizard-area-mode {
+  color: #8a5a00;
+}
+
+.wizard-area-editor.is-fixed .wizard-stage {
+  cursor: default;
+}

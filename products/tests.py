@@ -14,8 +14,8 @@ from django.urls import reverse
 
 from customization.models import CustomizationDraft
 
-from .forms import DEFAULT_AREA_RATIOS, PrintAreaForm
-from .models import CustomizationZone, Product, ProductView
+from .forms import DEFAULT_AREA_RATIOS, SideAreaForm
+from .models import Product, ProductView
 
 User = get_user_model()
 
@@ -26,6 +26,18 @@ class ProductCustomizationAccessTests(TestCase):
             title="Classic Tee",
             base_price=Decimal("25.00"),
             stock_quantity=5,
+        )
+        self.product_view = ProductView.objects.create(
+            product=self.product,
+            name="Front",
+            sort_order=1,
+            mockup_image="products/mockups/front.webp",
+            canvas_width_px=640,
+            canvas_height_px=480,
+            print_x=64,
+            print_y=48,
+            print_width=512,
+            print_height=384,
         )
 
     def test_anonymous_visitors_are_invited_to_sign_in_to_customize(self):
@@ -48,6 +60,17 @@ class ProductCustomizationAccessTests(TestCase):
         self.assertNotContains(response, "Sign in to customize")
         self.assertContains(response, f'href="{self.product.get_absolute_url()}"')
         self.assertContains(response, f'href="{reverse("customization:list")}"')
+
+    def test_product_without_customizable_sides_hides_the_customize_cta(self):
+        self.product_view.make_fixed()
+        self.product_view.save()
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sold as shown, no customizable sides")
+        self.assertNotContains(response, "Sign in to customize")
+        self.assertNotContains(response, f'href="{self.product.get_absolute_url()}"')
 
 
 class StaffProductCreateViewTests(TestCase):
@@ -106,25 +129,24 @@ class StaffProductCreateViewTests(TestCase):
                 data[f"views-{index}-mockup_image"] = face.get(
                     "mockup"
                 ) or self._mockup(name=f"mockup-{index}.png")
-            data[f"zone-{index}-name"] = face.get(
-                "zone_name", f"{name} artwork"
-            )
-            if face.get("full_face"):
-                data[f"zone-{index}-full_face"] = "on"
-            else:
-                ratios = face.get("ratios", DEFAULT_AREA_RATIOS)
-                for key in ("x_ratio", "y_ratio", "width_ratio", "height_ratio"):
-                    data[f"zone-{index}-{key}"] = str(ratios[key])
-            data[f"zone-{index}-rotation"] = str(face.get("rotation", 0))
-            if face.get("allow_rotation", True):
-                data[f"zone-{index}-allow_rotation"] = "on"
-            if face.get("allow_scaling", True):
-                data[f"zone-{index}-allow_scaling"] = "on"
-            data[f"zone-{index}-max_file_size_mb"] = str(
-                face.get("max_file_size_mb", settings.CUSTOMIZATION_MAX_UPLOAD_MB)
-            )
-            if face.get("aspect_ratio_locked"):
-                data[f"zone-{index}-aspect_ratio_locked"] = "on"
+            if face.get("customizable", True):
+                data[f"area-{index}-customizable"] = "on"
+                if face.get("full_face"):
+                    data[f"area-{index}-full_face"] = "on"
+                else:
+                    ratios = face.get("ratios", DEFAULT_AREA_RATIOS)
+                    for key in ("x_ratio", "y_ratio", "width_ratio", "height_ratio"):
+                        data[f"area-{index}-{key}"] = str(ratios[key])
+                data[f"area-{index}-rotation"] = str(face.get("rotation", 0))
+                if face.get("allow_rotation", True):
+                    data[f"area-{index}-allow_rotation"] = "on"
+                if face.get("allow_scaling", True):
+                    data[f"area-{index}-allow_scaling"] = "on"
+                data[f"area-{index}-max_file_size_mb"] = str(
+                    face.get("max_file_size_mb", settings.CUSTOMIZATION_MAX_UPLOAD_MB)
+                )
+                if face.get("aspect_ratio_locked"):
+                    data[f"area-{index}-aspect_ratio_locked"] = "on"
 
         return data
 
@@ -157,10 +179,17 @@ class StaffProductCreateViewTests(TestCase):
         self.assertContains(response, 'data-face-panel')
         self.assertContains(response, 'name="views-TOTAL_FORMS"')
         self.assertContains(response, 'name="views-0-mockup_image"')
-        self.assertContains(response, 'name="zone-0-x_ratio"')
+        self.assertContains(response, 'name="area-0-x_ratio"')
+        self.assertContains(response, 'name="area-0-customizable"')
         self.assertContains(response, "Add side")
         self.assertContains(response, "Printable area")
-        self.assertContains(response, "Use the entire face")
+        self.assertContains(response, "Use the entire side")
+        self.assertContains(response, "Customers can customize this side")
+        # Fixed sides keep their mockup preview and only lose the area editor.
+        self.assertContains(response, "data-area-editor")
+        self.assertContains(response, "data-stage-fixed")
+        self.assertContains(response, "data-fixed-note")
+        self.assertContains(response, "Mockup preview")
         self.assertNotContains(response, "Overlay texture")
         self.assertNotContains(response, "overlay_texture")
         self.assertEqual(response.context["view_formset"].total_form_count(), 1)
@@ -171,7 +200,7 @@ class StaffProductCreateViewTests(TestCase):
 
         self.assertNotIn("overlay_texture", field_names)
 
-    def test_staff_can_create_a_product_with_one_side_and_one_zone(self):
+    def test_staff_can_create_a_product_with_one_customizable_side(self):
         self.client.force_login(self.staff)
 
         response = self.client.post(
@@ -182,7 +211,6 @@ class StaffProductCreateViewTests(TestCase):
         self.assertRedirects(response, reverse("products:list"))
         product = Product.objects.get(title="Custom NFC card")
         product_view = ProductView.objects.get(product=product)
-        zone = CustomizationZone.objects.get(product_view=product_view)
 
         self.assertEqual(product.slug, "custom-nfc-card")
         self.assertEqual(product.stock_quantity, 25)
@@ -192,14 +220,15 @@ class StaffProductCreateViewTests(TestCase):
         self.assertEqual(product_view.canvas_width_px, 640)
         self.assertEqual(product_view.canvas_height_px, 480)
         self.assertTrue(product_view.mockup_image.name.endswith(".webp"))
-        self.assertEqual(zone.name, "Front artwork")
-        self.assertAlmostEqual(zone.x, 64)
-        self.assertAlmostEqual(zone.y, 48)
-        self.assertAlmostEqual(zone.width, 512)
-        self.assertAlmostEqual(zone.height, 384)
-        self.assertEqual(product_view.zones.count(), 1)
+        self.assertTrue(product_view.is_customizable)
+        self.assertAlmostEqual(product_view.print_x, 64)
+        self.assertAlmostEqual(product_view.print_y, 48)
+        self.assertAlmostEqual(product_view.print_width, 512)
+        self.assertAlmostEqual(product_view.print_height, 384)
+        self.assertEqual(product_view.print_area.width, product_view.print_width)
+        self.assertTrue(product.has_customizable_sides)
 
-    def test_staff_can_create_front_and_back_with_one_zone_each(self):
+    def test_staff_can_mix_customizable_and_fixed_sides(self):
         self.client.force_login(self.staff)
 
         response = self.client.post(
@@ -212,7 +241,7 @@ class StaffProductCreateViewTests(TestCase):
                         "mockup": self._mockup(
                             size=(400, 300), color="black", name="back.png"
                         ),
-                        "full_face": True,
+                        "customizable": False,
                     },
                 ]
             ),
@@ -224,16 +253,14 @@ class StaffProductCreateViewTests(TestCase):
 
         self.assertEqual([view.name for view in views], ["Front", "Back"])
         self.assertEqual([view.sort_order for view in views], [1, 2])
-        self.assertEqual(views[0].zones.count(), 1)
-        self.assertEqual(views[1].zones.count(), 1)
+        self.assertTrue(views[0].is_customizable)
+        self.assertFalse(views[1].is_customizable)
+        self.assertIsNone(views[1].print_width)
+        self.assertIsNone(views[1].print_height)
+        self.assertIsNone(views[1].print_area)
         self.assertEqual(views[1].canvas_width_px, 400)
         self.assertEqual(views[1].canvas_height_px, 300)
-
-        back_zone = views[1].zones.get()
-        self.assertEqual(back_zone.x, 0)
-        self.assertEqual(back_zone.y, 0)
-        self.assertEqual(back_zone.width, 400)
-        self.assertEqual(back_zone.height, 300)
+        self.assertEqual([view.pk for view in product.customizable_views], [views[0].pk])
 
     @override_settings(PRODUCT_MOCKUP_MAX_DIMENSION=320)
     def test_ratios_are_converted_after_the_mockup_is_resized(self):
@@ -258,17 +285,16 @@ class StaffProductCreateViewTests(TestCase):
 
         self.assertRedirects(response, reverse("products:list"))
         product_view = ProductView.objects.get()
-        zone = product_view.zones.get()
 
         self.assertEqual(product_view.canvas_width_px, 320)
         self.assertEqual(product_view.canvas_height_px, 240)
-        self.assertEqual(zone.x, 80)
-        self.assertEqual(zone.y, 60)
-        self.assertEqual(zone.width, 160)
-        self.assertEqual(zone.height, 120)
+        self.assertEqual(product_view.print_x, 80)
+        self.assertEqual(product_view.print_y, 60)
+        self.assertEqual(product_view.print_width, 160)
+        self.assertEqual(product_view.print_height, 120)
 
 
-    def test_zone_must_fit_inside_the_optimized_mockup(self):
+    def test_print_area_must_fit_inside_the_optimized_mockup(self):
         self.client.force_login(self.staff)
 
         response = self.client.post(
@@ -290,6 +316,23 @@ class StaffProductCreateViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "The printable area exceeds the mockup width.")
+        self.assertEqual(response.context["active_step"], 2)
+        self.assertFalse(Product.objects.filter(title="Custom NFC card").exists())
+
+    def test_at_least_one_customizable_side_is_required(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("products:create"),
+            self._payload([{"name": "Front", "customizable": False}]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Mark at least one side as customizable so customers can personalize "
+            "the product.",
+        )
         self.assertEqual(response.context["active_step"], 2)
         self.assertFalse(Product.objects.filter(title="Custom NFC card").exists())
 
@@ -330,13 +373,12 @@ class StaffProductCreateViewTests(TestCase):
         self.assertEqual(response.context["active_step"], 1)
         self.assertFalse(Product.objects.filter(base_price="39.00").exists())
 
-    def test_advanced_zone_settings_and_catalogue_visibility_are_saved(self):
+    def test_advanced_area_settings_and_catalogue_visibility_are_saved(self):
         self.client.force_login(self.staff)
         data = self._payload(
             [
                 {
                     "name": "Front",
-                    "zone_name": "Chest print",
                     "rotation": 15,
                     "allow_scaling": False,
                     "max_file_size_mb": 4,
@@ -354,19 +396,18 @@ class StaffProductCreateViewTests(TestCase):
 
         self.assertRedirects(response, reverse("products:list"))
         product = Product.objects.get(title="Hidden product")
-        zone = CustomizationZone.objects.get()
+        product_view = ProductView.objects.get(product=product)
 
         self.assertEqual(product.stock_quantity, 7)
         self.assertFalse(product.is_active)
-        self.assertEqual(zone.name, "Chest print")
-        self.assertEqual(zone.rotation, 15)
-        self.assertTrue(zone.allow_rotation)
-        self.assertFalse(zone.allow_scaling)
-        self.assertEqual(zone.max_file_size_mb, 4)
-        self.assertTrue(zone.aspect_ratio_locked)
+        self.assertEqual(product_view.rotation, 15)
+        self.assertTrue(product_view.allow_rotation)
+        self.assertFalse(product_view.allow_scaling)
+        self.assertEqual(product_view.max_file_size_mb, 4)
+        self.assertTrue(product_view.aspect_ratio_locked)
 
-    def test_print_area_form_defaults_to_the_store_upload_limit(self):
-        form = PrintAreaForm()
+    def test_side_area_form_defaults_to_the_store_upload_limit(self):
+        form = SideAreaForm()
 
         self.assertEqual(
             form.fields["max_file_size_mb"].initial,
@@ -597,6 +638,84 @@ class ProductListGalleryTests(TestCase):
         )
 
 
+class ProductListPaginationTests(TestCase):
+    """The catalogue loads one page of products at a time, in SQL."""
+
+    def _create_products(self, count, prefix="Product"):
+        return [
+            Product.objects.create(
+                title=f"{prefix} {index:02d}",
+                base_price=Decimal("10.00"),
+                stock_quantity=1,
+            )
+            for index in range(count)
+        ]
+
+    def test_catalogue_splits_products_into_pages(self):
+        self._create_products(3)
+        Product.objects.create(
+            title="Archived product",
+            base_price=Decimal("10.00"),
+            stock_quantity=0,
+            is_active=False,
+        )
+
+        with self.settings(PRODUCTS_PAGE_SIZE=2):
+            first_page = self.client.get(reverse("products:list"))
+            second_page = self.client.get(reverse("products:list"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        # Inactive products never reach the counter nor the page.
+        self.assertEqual(first_page.context["total_products"], 3)
+        self.assertEqual(
+            [product.title for product in first_page.context["products"]],
+            ["Product 00", "Product 01"],
+        )
+        self.assertEqual(
+            [product.title for product in second_page.context["products"]],
+            ["Product 02"],
+        )
+        self.assertContains(first_page, "Page 1 of 2")
+        self.assertContains(second_page, "Page 2 of 2")
+        self.assertContains(first_page, 'rel="next"')
+        self.assertContains(second_page, 'rel="prev"')
+
+    def test_out_of_range_and_invalid_pages_fall_back(self):
+        self._create_products(3)
+
+        with self.settings(PRODUCTS_PAGE_SIZE=2):
+            out_of_range = self.client.get(reverse("products:list"), {"page": 999})
+            invalid = self.client.get(reverse("products:list"), {"page": "abc"})
+            zero = self.client.get(reverse("products:list"), {"page": 0})
+            negative = self.client.get(reverse("products:list"), {"page": -3})
+
+        self.assertEqual(out_of_range.status_code, 200)
+        self.assertEqual(out_of_range.context["page_obj"].number, 2)
+        self.assertEqual(invalid.status_code, 200)
+        self.assertEqual(invalid.context["page_obj"].number, 1)
+        self.assertEqual(zero.context["page_obj"].number, 1)
+        self.assertEqual(negative.context["page_obj"].number, 1)
+
+    def test_page_size_comes_from_the_setting(self):
+        self._create_products(settings.PRODUCTS_PAGE_SIZE + 1)
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertEqual(
+            len(response.context["products"]), settings.PRODUCTS_PAGE_SIZE
+        )
+        self.assertTrue(response.context["is_paginated"])
+
+    def test_pagination_is_hidden_when_every_product_fits(self):
+        self._create_products(2)
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertFalse(response.context["is_paginated"])
+        self.assertNotContains(response, "list-pagination")
+        self.assertContains(response, "2 active products")
+
+
 class StaffProductDeactivateViewTests(TestCase):
     def setUp(self):
         self.staff = User.objects.create_user(
@@ -621,14 +740,11 @@ class StaffProductDeactivateViewTests(TestCase):
             canvas_width_px=200,
             canvas_height_px=200,
         )
-        self.zone = CustomizationZone.objects.create(
-            product_view=self.product_view,
-            name="Chest",
-            x=50,
-            y=50,
-            width=100,
-            height=100,
-        )
+        self.product_view.print_x = 50
+        self.product_view.print_y = 50
+        self.product_view.print_width = 100
+        self.product_view.print_height = 100
+        self.product_view.save()
         self.draft = CustomizationDraft.objects.create(
             user=self.customer,
             product=self.product,
@@ -652,7 +768,8 @@ class StaffProductDeactivateViewTests(TestCase):
         self.assertFalse(self.product.is_active)
         self.assertTrue(Product.objects.filter(pk=self.product.pk).exists())
         self.assertTrue(ProductView.objects.filter(pk=self.product_view.pk).exists())
-        self.assertTrue(CustomizationZone.objects.filter(pk=self.zone.pk).exists())
+        self.product_view.refresh_from_db()
+        self.assertTrue(self.product_view.is_customizable)
         self.assertTrue(CustomizationDraft.objects.filter(pk=self.draft.pk).exists())
 
     def test_non_staff_users_cannot_deactivate_products(self):

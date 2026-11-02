@@ -20,8 +20,8 @@
             <p class="home-eyebrow">Staff tools</p>
             <h1>Create a product</h1>
             <p class="create-product-lead">
-                Add the product details, upload one mockup per side, and draw the exact
-                area customers may customize. Every side gets exactly one printable area.
+                Add the product details, upload one mockup per side, and choose whether each
+                side is customizable. Customizable sides get exactly one printable area.
             </p>
         </div>
         <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">
@@ -44,8 +44,8 @@
                 <button type="button" data-step-target="2" {% if active_step == 2 %}aria-current="step"{% endif %}>
                     <span class="wizard-step-number"><i class="bi bi-check-lg"></i><span>2</span></span>
                     <span class="wizard-step-copy">
-                        <strong>Faces &amp; print areas</strong>
-                        <small>Mockups and drawable areas</small>
+                        <strong>Sides &amp; print areas</strong>
+                        <small>Mockups and print areas</small>
                     </span>
                 </button>
             </li>
@@ -137,11 +137,11 @@
             <div class="wizard-panel-heading">
                 <div>
                     <p class="wizard-kicker">Step 2 of 3</p>
-                    <h2 id="wizard-step-2-title">Faces &amp; print areas</h2>
+                    <h2 id="wizard-step-2-title">Sides &amp; print areas</h2>
                     <p>
-                        Add up to {{ max_views }} sides. Each side has one mockup and exactly
-                        one printable area. The area is stored as ratios of the optimized
-                        mockup, so it lines up in the customer editor.
+                        Add up to {{ max_views }} sides. Each side has one mockup and, when it is
+                        customizable, exactly one printable area; fixed sides have none. The area is
+                        stored as ratios of the optimized mockup, so it lines up in the customer editor.
                     </p>
                 </div>
             </div>
@@ -159,7 +159,7 @@
 
             <div class="wizard-face-panels" data-face-panels>
                 {% for row in face_rows %}
-                {% include "products/partials/face_form.html" with view_form=row.view_form zone_form=row.zone_form face_index=row.index is_active=row.is_active %}
+                {% include "products/partials/face_form.html" with view_form=row.view_form area_form=row.area_form face_index=row.index is_active=row.is_active %}
                 {% empty %}
                 <div class="wizard-empty-faces" data-empty-faces>
                     <i class="bi bi-layers"></i>
@@ -169,7 +169,7 @@
             </div>
 
             <template id="wizard-face-template">
-                {% include "products/partials/face_form.html" with view_form=view_formset.empty_form zone_form=empty_zone_form face_index="__prefix__" is_active=0 %}
+                {% include "products/partials/face_form.html" with view_form=view_formset.empty_form area_form=empty_area_form face_index="__prefix__" is_active=0 %}
             </template>
 
             <p class="wizard-note">

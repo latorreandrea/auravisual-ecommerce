@@ -97,20 +97,30 @@
         return {
             name: panel.querySelector('[name^="views-"][name$="-name"]'),
             file: panel.querySelector('input[type="file"][name$="-mockup_image"]'),
-            zoneName: panel.querySelector('[name^="zone-"][name$="-name"]'),
-            fullFace: panel.querySelector(
-                'input[type="checkbox"][name^="zone-"][name$="-full_face"]'
+            customizable: panel.querySelector(
+                'input[type="checkbox"][name^="area-"][name$="-customizable"]'
             ),
-            x: panel.querySelector('[name^="zone-"][name$="-x_ratio"]'),
-            y: panel.querySelector('[name^="zone-"][name$="-y_ratio"]'),
-            width: panel.querySelector('[name^="zone-"][name$="-width_ratio"]'),
-            height: panel.querySelector('[name^="zone-"][name$="-height_ratio"]'),
+            fullFace: panel.querySelector(
+                'input[type="checkbox"][name^="area-"][name$="-full_face"]'
+            ),
+            x: panel.querySelector('[name^="area-"][name$="-x_ratio"]'),
+            y: panel.querySelector('[name^="area-"][name$="-y_ratio"]'),
+            width: panel.querySelector('[name^="area-"][name$="-width_ratio"]'),
+            height: panel.querySelector('[name^="area-"][name$="-height_ratio"]'),
+            areaPanel: panel.querySelector("[data-area-panel]"),
+            fixedNote: panel.querySelector("[data-fixed-note]"),
+            badgeText: panel.querySelector("[data-face-badge-text]"),
             stage: panel.querySelector("[data-area-stage]"),
             image: panel.querySelector("[data-mockup-preview]"),
             placeholder: panel.querySelector("[data-stage-placeholder]"),
             hint: panel.querySelector("[data-stage-hint]"),
             areaBox: panel.querySelector("[data-area-box]"),
             areaMode: panel.querySelector("[data-area-mode]"),
+            areaEditor: panel.querySelector("[data-area-editor]"),
+            areaKickerDefault: panel.querySelector("[data-area-kicker-default]"),
+            areaKickerFixed: panel.querySelector("[data-area-kicker-fixed]"),
+            fullFaceSwitch: panel.querySelector("[data-full-face-switch]"),
+            stageFixed: panel.querySelector("[data-stage-fixed]"),
             areaError: panel.querySelector("[data-area-error]"),
             fileName: panel.querySelector("[data-file-name]"),
         };
@@ -170,17 +180,54 @@
             fields.image && !fields.image.hidden && fields.image.getAttribute("src")
         );
         const fullFace = Boolean(fields.fullFace?.checked);
+        const customizable = fields.customizable
+            ? fields.customizable.checked
+            : true;
+
+        // Fixed sides keep their mockup preview: only the printable-area
+        // controls disappear, so admins still see what gets printed.
+        if (fields.areaEditor) {
+            fields.areaEditor.classList.toggle("is-fixed", !customizable);
+        }
+        if (fields.areaKickerDefault) {
+            fields.areaKickerDefault.hidden = !customizable;
+        }
+        if (fields.areaKickerFixed) {
+            fields.areaKickerFixed.hidden = customizable;
+        }
+        if (fields.stageFixed) {
+            fields.stageFixed.hidden = customizable;
+        }
+        if (fields.fixedNote) {
+            fields.fixedNote.hidden = customizable;
+        }
+        if (fields.badgeText) {
+            fields.badgeText.textContent = customizable
+                ? "Customizable side"
+                : "Fixed side";
+        }
+        if (fields.fullFace) {
+            fields.fullFace.disabled = !customizable;
+        }
+        if (fields.fullFaceSwitch) {
+            fields.fullFaceSwitch.hidden = !customizable;
+        }
 
         if (fields.areaBox) {
-            fields.areaBox.hidden = !hasImage;
+            fields.areaBox.hidden = !hasImage || !customizable;
             fields.areaBox.classList.toggle("is-full-face", fullFace);
         }
         if (fields.stage) {
-            fields.stage.classList.toggle("is-editable", hasImage);
+            fields.stage.classList.toggle(
+                "is-editable",
+                hasImage && customizable
+            );
         }
         if (fields.hint) {
             fields.hint.hidden =
-                !hasImage || panel.dataset.hintDismissed === "true";
+                !hasImage ||
+                !customizable ||
+                panel.dataset.hintDismissed === "true";
         }
 
         let ratios = readRatios(panel);
@@ -203,14 +250,16 @@
         }
 
         if (fields.areaMode) {
-            fields.areaMode.textContent = fullFace
+            fields.areaMode.textContent = !customizable
+                ? "Printed as-is"
+                : fullFace
                 ? "Entire face"
                 : "Custom rectangle";
         }
 
         panel.querySelectorAll("[data-area-input]").forEach((input) => {
             const key = input.dataset.areaInput;
-            input.disabled = fullFace || !hasImage;
+            input.disabled = fullFace || !hasImage || !customizable;
             if (document.activeElement !== input) {
                 input.value = formatPercent(ratios[key]);
             }
@@ -559,7 +608,7 @@
                     }
                     const updated = value
                         .replace(/views-\d+-/g, `views-${index}-`)
-                        .replace(/zone-\d+-/g, `zone-${index}-`)
+                        .replace(/area-\d+-/g, `area-${index}-`)
                         .replace(/face-panel-\d+/g, `face-panel-${index}`);
                     if (updated !== value) {
                         element.setAttribute(attribute, updated);
@@ -628,9 +677,6 @@
         const name = defaultFaceName(index);
         if (fields.name && !fields.name.value) {
             fields.name.value = name;
-        }
-        if (fields.zoneName && !fields.zoneName.value) {
-            fields.zoneName.value = `${name} artwork`;
         }
         if (fields.fullFace) {
             fields.fullFace.checked = false;
@@ -895,19 +941,12 @@
             fields.file?.addEventListener("change", () => loadPreview(panel));
 
             fields.name?.addEventListener("input", () => {
-                const name = (fields.name.value || "").trim();
-                const previous = panel.dataset.lastFaceName || "";
-                const previousAuto = previous ? `${previous} artwork` : "";
-                const currentZoneName = (fields.zoneName?.value || "").trim();
-                if (
-                    fields.zoneName &&
-                    (!currentZoneName || currentZoneName === previousAuto)
-                ) {
-                    fields.zoneName.value = `${
-                        name || defaultFaceName(panels().indexOf(panel))
-                    } artwork`;
-                }
-                panel.dataset.lastFaceName = name;
+                panel.dataset.lastFaceName = (fields.name.value || "").trim();
+                updateTabLabels();
+            });
+
+            fields.customizable?.addEventListener("change", () => {
+                syncArea(panel);
                 updateTabLabels();
             });
 
@@ -985,9 +1024,6 @@
         }
 
         const name = (fields.name?.value || "").trim();
-        if (fields.zoneName && !fields.zoneName.value.trim() && name) {
-            fields.zoneName.value = `${name} artwork`;
-        }
         panel.dataset.lastFaceName = name || panel.dataset.lastFaceName || "";
         syncArea(panel);
     }
@@ -1029,6 +1065,8 @@
             return false;
         }
 
+        let customizableSides = 0;
+
         for (let index = 0; index < allPanels.length; index += 1) {
             const panel = allPanels[index];
             const fields = faceFields(panel);
@@ -1064,7 +1102,14 @@
                 return false;
             }
 
-            if (!fields.fullFace?.checked) {
+            const customizable = fields.customizable
+                ? fields.customizable.checked
+                : true;
+            if (customizable) {
+                customizableSides += 1;
+            }
+
+            if (customizable && !fields.fullFace?.checked) {
                 const ratios = readRatios(panel);
                 if (
                     ratios.width <= 0 ||
@@ -1082,6 +1127,13 @@
                     return false;
                 }
             }
+        }
+
+        if (!customizableSides) {
+            showGlobalErrors([
+                "Mark at least one side as customizable so customers can personalize the product.",
+            ]);
+            return false;
         }
 
         return true;
@@ -1162,8 +1214,9 @@
             const fields = faceFields(panel);
             const name =
                 (fields.name?.value || "").trim() || defaultFaceName(index);
-            const zoneName =
-                (fields.zoneName?.value || "").trim() || `${name} artwork`;
+            const customizable = fields.customizable
+                ? fields.customizable.checked
+                : true;
             const fullFace = Boolean(fields.fullFace?.checked);
             const ratios = fullFace
                 ? { x: 0, y: 0, width: 1, height: 1 }
@@ -1191,16 +1244,20 @@
             copy.className = "wizard-review-face-copy";
             const strong = document.createElement("strong");
             strong.textContent = `${index + 1}. ${name}`;
-            const zone = document.createElement("small");
-            zone.textContent = zoneName;
+            const kind = document.createElement("small");
+            kind.textContent = customizable
+                ? "Customizable side"
+                : "Fixed side";
             const area = document.createElement("span");
             area.className = "wizard-review-area";
-            area.textContent = fullFace
-                ? "Entire face"
-                : `${formatPercent(ratios.width)}% × ${formatPercent(
-                      ratios.height
-                  )}% area`;
-            copy.append(strong, zone, area);
+            area.textContent = !customizable
+                ? "Printed exactly as the mockup"
+                : fullFace
+                  ? "Entire side"
+                  : `${formatPercent(ratios.width)}% × ${formatPercent(
+                        ratios.height
+                    )}% area`;
+            copy.append(strong, kind, area);
             card.append(thumb, copy);
             container.append(card);
         });

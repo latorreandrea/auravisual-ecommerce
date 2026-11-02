@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 
 from .forms import MockupImageFormMixin
-from .models import CustomizationZone, Product, ProductView
+from .models import Product, ProductView
 
 
 class ProductViewAdminForm(MockupImageFormMixin, forms.ModelForm):
@@ -25,23 +25,6 @@ class MockupPreviewMixin:
         )
 
 
-class CustomizationZoneInline(admin.TabularInline):
-    model = CustomizationZone
-    extra = 0
-    fields = (
-        "name",
-        "x",
-        "y",
-        "width",
-        "height",
-        "rotation",
-        "allow_rotation",
-        "allow_scaling",
-        "max_file_size_mb",
-        "aspect_ratio_locked",
-    )
-
-
 class ProductViewInline(MockupPreviewMixin, admin.TabularInline):
     model = ProductView
     form = ProductViewAdminForm
@@ -51,8 +34,8 @@ class ProductViewInline(MockupPreviewMixin, admin.TabularInline):
         "sort_order",
         "mockup_image",
         "mockup_preview",
-        "canvas_width_px",
-        "canvas_height_px",
+        "print_width",
+        "print_height",
     )
     readonly_fields = ("mockup_preview", "canvas_width_px", "canvas_height_px")
     show_change_link = True
@@ -79,13 +62,19 @@ class ProductAdmin(admin.ModelAdmin):
 @admin.register(ProductView)
 class ProductViewAdmin(MockupPreviewMixin, admin.ModelAdmin):
     form = ProductViewAdminForm
-    list_display = ("product", "name", "sort_order", "canvas_width_px", "canvas_height_px", "zone_count")
-    list_filter = ("product",)
+    list_display = (
+        "product",
+        "name",
+        "sort_order",
+        "side_kind",
+        "canvas_width_px",
+        "canvas_height_px",
+    )
+    list_filter = ("product", "allow_rotation", "allow_scaling")
     search_fields = ("product__title", "name")
-    inlines = (CustomizationZoneInline,)
     readonly_fields = ("mockup_preview", "canvas_width_px", "canvas_height_px")
     fieldsets = (
-        ("View", {"fields": ("product", "name", "sort_order")}),
+        ("Side", {"fields": ("product", "name", "sort_order")}),
         (
             "Mockup",
             {
@@ -97,25 +86,30 @@ class ProductViewAdmin(MockupPreviewMixin, admin.ModelAdmin):
                 )
             },
         ),
+        (
+            "Printable area",
+            {
+                "fields": ("print_x", "print_y", "print_width", "print_height"),
+                "description": (
+                    "Leave the width and height empty to make this a fixed side: "
+                    "customers will only see the mockup and it is printed unchanged."
+                ),
+            },
+        ),
+        (
+            "Customer controls",
+            {
+                "fields": (
+                    "rotation",
+                    "allow_rotation",
+                    "allow_scaling",
+                    "aspect_ratio_locked",
+                    "max_file_size_mb",
+                )
+            },
+        ),
     )
 
-    @admin.display(description="Zones")
-    def zone_count(self, obj):
-        return obj.zones.count()
-
-
-@admin.register(CustomizationZone)
-class CustomizationZoneAdmin(admin.ModelAdmin):
-    list_display = (
-        "name",
-        "product_view",
-        "x",
-        "y",
-        "width",
-        "height",
-        "allow_rotation",
-        "allow_scaling",
-        "max_file_size_mb",
-    )
-    list_filter = ("product_view__product", "product_view", "allow_rotation", "allow_scaling")
-    search_fields = ("name", "product_view__name", "product_view__product__title")
+    @admin.display(description="Kind")
+    def side_kind(self, obj):
+        return "Customizable" if obj.is_customizable else "Fixed"

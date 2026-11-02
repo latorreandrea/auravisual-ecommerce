@@ -9,10 +9,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from auravisual_ecommerce.pagination import paginate
+
 from .forms import (
     DEFAULT_AREA_RATIOS,
     MAX_PRODUCT_VIEWS,
-    PrintAreaForm,
+    SideAreaForm,
     ProductCreateForm,
     ProductViewFormSet,
 )
@@ -39,10 +41,6 @@ def _initial_face_name(index):
     return ("Front", "Back")[index] if index < 2 else f"Side {index + 1}"
 
 
-def _zone_initial(name):
-    return {"name": name, **DEFAULT_AREA_RATIOS}
-
-
 def _attach_gallery_views(products):
     """Expose the ordered, non-empty side mockups used by the catalogue cards.
 
@@ -63,7 +61,7 @@ def _attach_gallery_views(products):
 
 
 def product_list(request):
-    products = list(
+    queryset = (
         Product.objects.filter(is_active=True)
         .prefetch_related(
             Prefetch(
@@ -73,8 +71,19 @@ def product_list(request):
         )
         .order_by("title")
     )
-    _attach_gallery_views(products)
-    return render(request, "products/list.html", {"products": products})
+    # Pagination runs in SQL (one COUNT plus a LIMIT/OFFSET page), so the
+    # catalogue never loads the whole table: see auravisual_ecommerce.pagination.
+    page_obj, page_context = paginate(request, queryset, settings.PRODUCTS_PAGE_SIZE)
+    products = _attach_gallery_views(list(page_obj.object_list))
+    return render(
+        request,
+        "products/list.html",
+        {
+            "products": products,
+            "total_products": page_obj.paginator.count,
+            **page_context,
+        },
+    )
 
 
 @login_required
@@ -101,7 +110,7 @@ def deactivate_product(request, slug):
 
 @login_required
 def create_product(request):
-    """Staff wizard: product details, one or more sides and one zone per side."""
+    """Staff wizard: product details, one or more sides and their print areas."""
 
     if not request.user.is_staff:
         raise PermissionDenied
@@ -118,42 +127,49 @@ def create_product(request):
         formset_kwargs["initial"] = [{"name": _initial_face_name(0)}]
     view_formset = ProductViewFormSet(**formset_kwargs)
 
-    zone_forms = []
+    area_forms = []
     for index in range(len(view_formset.forms)):
         if is_post:
-            zone_forms.append(PrintAreaForm(request.POST, prefix=f"zone-{index}"))
+            area_forms.append(SideAreaForm(request.POST, prefix=f"area-{index}"))
         else:
-            face_name = (
-                view_formset.forms[index].initial.get("name")
-                or _initial_face_name(index)
-            )
-            zone_forms.append(
-                PrintAreaForm(
-                    prefix=f"zone-{index}",
-                    initial=_zone_initial(f"{face_name} artwork"),
-                )
+            area_forms.append(
+                SideAreaForm(prefix=f"area-{index}", initial=DEFAULT_AREA_RATIOS)
             )
 
     product_valid = product_form.is_valid()
     views_valid = view_formset.is_valid()
-    zones_valid = True
+    areas_valid = True
+    customizable_sides = 0
 
     if is_post:
         for index, view_form in enumerate(view_formset.forms):
             if not view_form.has_changed():
                 # Empty extra/min-num forms are reported by the formset itself.
                 continue
-            zone_form = zone_forms[index]
+            area_form = area_forms[index]
             if view_form.is_valid():
-                zone_form.canvas_width = view_form.instance.canvas_width_px
-                zone_form.canvas_height = view_form.instance.canvas_height_px
-            if not zone_form.is_valid():
-                zones_valid = False
+                area_form.canvas_width = view_form.instance.canvas_width_px
+                area_form.canvas_height = view_form.instance.canvas_height_px
+            if not area_form.is_valid():
+                areas_valid = False
+            elif area_form.cleaned_data.get("customizable"):
+                customizable_sides += 1
 
-    if is_post and product_valid and views_valid and zones_valid:
+        if product_valid and views_valid and areas_valid and not customizable_sides:
+            # A product with only fixed sides can never be customized: reject it
+            # here instead of shipping a product whose editor is empty.
+            areas_valid = False
+            area_forms[0].add_error(
+                None,
+                "Mark at least one side as customizable so customers can "
+                "personalize the product.",
+            )
+
+    if is_post and product_valid and views_valid and areas_valid:
         with transaction.atomic():
             product = product_form.save()
             saved_sides = 0
+            customizable_sides = 0
 
             for index, view_form in enumerate(view_formset.forms):
                 if not view_form.has_changed():
@@ -162,14 +178,17 @@ def create_product(request):
                 product_view.product = product
                 saved_sides += 1
                 product_view.sort_order = saved_sides
+                # The drawn area (or the fixed-side flag) lives on the side.
+                area_forms[index].apply_to(product_view)
                 product_view.save()
-
-                zone_forms[index].build_zone(product_view).save()
+                if product_view.is_customizable:
+                    customizable_sides += 1
 
         messages.success(
             request,
             f'"{product.title}" was created with {saved_sides} '
-            f'{"side" if saved_sides == 1 else "sides"} and one printable area per side.',
+            f'{"side" if saved_sides == 1 else "sides"} '
+            f"({customizable_sides} customizable).",
         )
         if _wants_json(request):
             return JsonResponse(
@@ -187,7 +206,7 @@ def create_product(request):
     if is_post:
         for index, view_form in enumerate(view_formset.forms):
             if view_form.errors or (
-                index < len(zone_forms) and zone_forms[index].errors
+                index < len(area_forms) and area_forms[index].errors
             ):
                 active_face = index
                 break
@@ -198,8 +217,8 @@ def create_product(request):
         _collect_form_errors(product_form, errors, non_field_errors)
         for view_form in view_formset.forms:
             _collect_form_errors(view_form, errors, non_field_errors)
-        for zone_form in zone_forms:
-            _collect_form_errors(zone_form, errors, non_field_errors)
+        for area_form in area_forms:
+            _collect_form_errors(area_form, errors, non_field_errors)
         non_field_errors.extend(
             str(error) for error in view_formset.non_form_errors()
         )
@@ -219,7 +238,7 @@ def create_product(request):
         {
             "index": index,
             "view_form": view_form,
-            "zone_form": zone_forms[index],
+            "area_form": area_forms[index],
             "is_active": index == active_face,
         }
         for index, view_form in enumerate(view_formset.forms)
@@ -232,9 +251,9 @@ def create_product(request):
             "product_form": product_form,
             "view_formset": view_formset,
             "face_rows": face_rows,
-            "empty_zone_form": PrintAreaForm(
-                prefix="zone-__prefix__",
-                initial=_zone_initial(""),
+            "empty_area_form": SideAreaForm(
+                prefix="area-__prefix__",
+                initial=DEFAULT_AREA_RATIOS,
             ),
             "active_step": active_step,
             "active_face": active_face,
@@ -246,7 +265,7 @@ def create_product(request):
                 product_form.errors
                 or view_formset.errors
                 or view_formset.non_form_errors()
-                or any(zone.errors for zone in zone_forms)
+                or any(area.errors for area in area_forms)
             ),
         },
     )

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}Customizations | AuraVisual Ecommerce{% endblock %}
+{% block title %}Your projects | AuraVisual Ecommerce{% endblock %}
 
 {% block meta_description %}Review the personalised product designs saved on your AuraVisual Ecommerce account.{% endblock %}
 {% block og_title %}Customizations | AuraVisual Ecommerce{% endblock %}
@@ -11,20 +12,23 @@
 {% block content %}
 <section>
     <div class="section-title">
-        <h2>Your Customizations</h2>
-        <p>Personalised product versions you created.</p>
+        <h2>Your projects</h2>
+        <p>Every customization you saved, ready to continue or order.</p>
     </div>
 
     {% if drafts %}
+    <p class="list-summary">
+        {{ total_drafts }} saved project{{ total_drafts|pluralize }}
+    </p>
     <div class="row g-4">
         {% for draft in drafts %}
         <div class="col-md-6">
-            <div class="info-card h-100 d-flex flex-column">
+            <div class="info-card h-100 d-flex flex-column tilt-card" data-tilt data-tilt-max="10" data-tilt-speed="600">
                 <div class="icon-wrap"><i class="bi bi-palette"></i></div>
-                <h3>{{ draft.product.title }}</h3>
-                <p class="mb-3">Last updated {{ draft.updated_at|date:"d/m/Y H:i" }}</p>
+                <h3>{{ draft.display_name }}</h3>
+                <p class="mb-3">{{ draft.product.title }} &middot; updated {{ draft.updated_at|date:"d/m/Y H:i" }}</p>
                 {% if draft.preview_url %}
-                <img src="{{ draft.preview_url }}" alt="Preview of {{ draft.product.title }}" class="customization-preview mb-3" loading="lazy">
+                <img src="{{ draft.preview_url }}" alt="Preview of {{ draft.display_name }}" class="customization-preview mb-3" loading="lazy">
                 {% else %}
                 <div class="customization-preview placeholder-preview mb-3 d-flex align-items-center justify-content-center">
                     <i class="bi bi-image text-muted fs-1" aria-hidden="true"></i>
@@ -48,13 +52,19 @@
         </div>
         {% endfor %}
     </div>
+    {% include "partials/pagination.html" %}
     {% else %}
-    <p class="text-center">You have not created any customizations yet.</p>
+    <p class="text-center">You have not created any projects yet.</p>
     <div class="text-center">
         <a href="{% url 'products:list' %}" class="btn-get-started">
-            <i class="bi bi-bag me-2"></i>Browse products
+            <i class="bi bi-palette me-2"></i>Start customizing
         </a>
     </div>
     {% endif %}
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.8.1/dist/vanilla-tilt.min.js" defer></script>
+<script src="{% static 'js/card-tilt.js' %}?v={{ ASSET_VERSION }}" defer></script>
 {% endblock %}

@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import tempfile
+import zipfile
 from decimal import Decimal
 from urllib.parse import parse_qs, urlparse
 
@@ -14,7 +15,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from products.models import CustomizationZone, Product, ProductView
+from products.models import Product, ProductView
 
 from .models import CustomizationDraft
 
@@ -68,56 +69,58 @@ class CustomizationFlowTests(TestCase):
             base_price=Decimal("25.00"),
             stock_quantity=5,
         )
-        self.view = ProductView.objects.create(
+        self.view = self.make_view(name="Front", sort_order=1, size=(200, 200))
+
+    def make_view(self, name, sort_order, size=(200, 200), customizable=True):
+        view = ProductView.objects.create(
             product=self.product,
-            name="Front",
-            sort_order=1,
+            name=name,
+            sort_order=sort_order,
             mockup_image=SimpleUploadedFile(
-                "mockup.png",
-                png_bytes((200, 200), (255, 255, 255, 255)),
+                f"{name.lower()}-mockup.png",
+                png_bytes(size, (255, 255, 255, 255)),
                 content_type="image/png",
             ),
-            canvas_width_px=200,
-            canvas_height_px=200,
+            canvas_width_px=size[0],
+            canvas_height_px=size[1],
         )
-        self.zone = CustomizationZone.objects.create(
-            product_view=self.view,
-            name="Chest",
-            x=50,
-            y=50,
-            width=100,
-            height=100,
-        )
+        if customizable:
+            view.print_x = size[0] * 0.25
+            view.print_y = size[1] * 0.25
+            view.print_width = size[0] * 0.5
+            view.print_height = size[1] * 0.5
+            view.save()
+        return view
 
     def configuration(self, views):
         return json.dumps({"views": views})
 
-    def save_draft(self, views, files=None, draft=None):
+    def save_draft(self, views, files=None, draft=None, name=None):
         payload = {
             "product_id": self.product.pk,
             "configuration": self.configuration(views),
         }
         if draft is not None:
             payload["draft_id"] = str(draft.pk)
+        if name is not None:
+            payload["name"] = name
         payload.update(files or {})
         return self.client.post(reverse("customization:draft_save"), payload)
 
-    def zone_payload(self, view, zone, **transform):
+    def view_payload(self, view, **transform):
+        area = view.print_area
         return {
             "product_view_id": view.pk,
-            "zones": [
-                {
-                    "zone_id": zone.pk,
-                    "transform": {
-                        "x": 50,
-                        "y": 50,
-                        "width": 100,
-                        "height": 50,
-                        "rotation": 15,
-                        **transform,
-                    },
-                }
-            ],
+            "image": {
+                "transform": {
+                    "x": area.x,
+                    "y": area.y,
+                    "width": area.width,
+                    "height": area.height / 2,
+                    "rotation": 15,
+                    **transform,
+                },
+            },
         }
 
     def trigger_webhook(self, draft_ids, token="test-secret"):
@@ -128,24 +131,70 @@ class CustomizationFlowTests(TestCase):
             HTTP_X_WEBHOOK_TOKEN=token,
         )
 
-    def test_editor_payload_includes_canvas_and_limits(self):
+    def test_editor_payload_includes_print_area_and_limits(self):
         response = self.client.get(
             reverse("customization:editor", kwargs={"slug": self.product.slug})
         )
+
         self.assertEqual(response.status_code, 200)
         editor_payload = response.context["editor_payload"]
-        self.assertEqual(editor_payload["views"][0]["canvas_width"], 200)
+        payload_view = editor_payload["views"][0]
+        self.assertEqual(payload_view["id"], self.view.pk)
+        self.assertEqual(payload_view["canvas_width"], 200)
+        self.assertEqual(payload_view["print_area"]["width"], 100.0)
+        self.assertEqual(payload_view["print_area"]["height"], 100.0)
+        self.assertTrue(payload_view["print_area"]["allow_scaling"])
+        self.assertNotIn("zones", payload_view)
         self.assertEqual(
             editor_payload["max_image_pixels"],
             settings.CUSTOMIZATION_MAX_IMAGE_PIXELS,
         )
-        self.assertEqual(editor_payload["views"][0]["zones"][0]["id"], self.zone.pk)
-        self.assertNotIn("overlay_url", editor_payload["views"][0])
+
+    def test_fixed_sides_are_not_offered_in_the_editor(self):
+        fixed = self.make_view(
+            name="Inside", sort_order=2, size=(200, 200), customizable=False
+        )
+
+        response = self.client.get(
+            reverse("customization:editor", kwargs={"slug": self.product.slug})
+        )
+        names = [view["name"] for view in response.context["editor_payload"]["views"]]
+
+        self.assertEqual(names, ["Front"])
+        self.assertNotIn(fixed.name, names)
+
+    def test_editor_warns_when_no_side_is_customizable(self):
+        product = Product.objects.create(
+            title="Plain Mug",
+            base_price=Decimal("10.00"),
+            stock_quantity=3,
+        )
+        ProductView.objects.create(
+            product=product,
+            name="Front",
+            sort_order=1,
+            mockup_image="products/mockups/front.webp",
+            canvas_width_px=200,
+            canvas_height_px=200,
+        )
+
+        response = self.client.get(
+            reverse("customization:editor", kwargs={"slug": product.slug})
+        )
+        messages = [str(message) for message in response.context["messages"]]
+
+        self.assertEqual(response.context["editor_payload"]["views"], [])
+        self.assertIn(
+            '"Plain Mug" has no customizable sides yet: the product is printed '
+            "exactly as it is shown.",
+            messages,
+        )
 
     def test_save_preview_cart_print_and_delete(self):
         response = self.save_draft(
-            [self.zone_payload(self.view, self.zone)],
-            {f"asset_{self.zone.pk}": upload()},
+            [self.view_payload(self.view)],
+            {f"asset_{self.view.pk}": upload()},
+            name="Summer tee",
         )
         self.assertEqual(response.status_code, 302)
 
@@ -153,18 +202,20 @@ class CustomizationFlowTests(TestCase):
         self.assertEqual(
             response.url, reverse("customization:draft_detail", args=[draft.pk])
         )
+        self.assertEqual(draft.name, "Summer tee")
+        self.assertEqual(draft.display_name, "Summer tee")
         self.assertTrue(draft.preview_webp_url)
-        self.assertTrue(os.path.exists(draft.preview_webp_url.path))
         with Image.open(draft.preview_webp_url.path) as preview:
             self.assertEqual(preview.format, "WEBP")
+            self.assertEqual(preview.size, (200, 200))
         self.assertLessEqual(
             os.path.getsize(draft.preview_webp_url.path),
             settings.CUSTOMIZATION_PREVIEW_MAX_BYTES,
         )
 
-        stored_zone = draft.configuration_json["views"][0]["zones"][0]
-        self.assertEqual(stored_zone["transform"]["rotation"], 15.0)
-        asset_path = stored_zone["asset_path"]
+        stored_image = draft.configuration_json["views"][0]["image"]
+        self.assertEqual(stored_image["transform"]["rotation"], 15.0)
+        asset_path = stored_image["asset_path"]
         self.assertTrue(
             asset_path.startswith(f"customization/drafts/{draft.pk}/assets/")
         )
@@ -173,10 +224,11 @@ class CustomizationFlowTests(TestCase):
         detail = self.client.get(reverse("customization:draft_detail", args=[draft.pk]))
         self.assertEqual(detail.status_code, 200)
         self.assertContains(detail, draft.preview_url)
+        self.assertContains(detail, "Summer tee")
 
         listing = self.client.get(reverse("customization:list"))
         self.assertEqual(listing.status_code, 200)
-        self.assertContains(listing, self.product.title)
+        self.assertContains(listing, "Summer tee")
 
         add_response = self.client.post(
             reverse("cart:add", args=[self.product.pk]),
@@ -195,11 +247,12 @@ class CustomizationFlowTests(TestCase):
         self.assertEqual(webhook_response.json()["queued"], [str(draft.pk)])
 
         draft.refresh_from_db()
-        self.assertTrue(draft.print_file_url)
-        self.assertTrue(os.path.exists(draft.print_file_url.path))
-        with Image.open(draft.print_file_url.path) as print_image:
-            self.assertEqual(print_image.format, "PNG")
-            self.assertEqual(print_image.size, (200, 200))
+        self.assertTrue(draft.print_file_url.name.endswith(".zip"))
+        with zipfile.ZipFile(draft.print_file_url.path) as archive:
+            self.assertEqual(archive.namelist(), ["Front.png"])
+            with Image.open(io.BytesIO(archive.read("Front.png"))) as printed:
+                self.assertEqual(printed.format, "PNG")
+                self.assertEqual(printed.size, (200, 200))
 
         preview_path = draft.preview_webp_url.path
         print_path = draft.print_file_url.path
@@ -212,69 +265,60 @@ class CustomizationFlowTests(TestCase):
         self.assertFalse(os.path.exists(print_path))
         self.assertFalse(default_storage.exists(asset_path))
 
-    def test_replacing_an_image_removes_the_old_asset(self):
+    def test_project_without_name_falls_back_to_the_product_and_date(self):
         self.save_draft(
-            [self.zone_payload(self.view, self.zone)],
-            {f"asset_{self.zone.pk}": upload()},
+            [self.view_payload(self.view)],
+            {f"asset_{self.view.pk}": upload()},
         )
         draft = CustomizationDraft.objects.get(user=self.user)
-        first_asset = draft.configuration_json["views"][0]["zones"][0]["asset_path"]
+
+        self.assertEqual(draft.name, "")
+        self.assertIn(self.product.title, draft.display_name)
+        self.assertNotEqual(draft.display_name, self.product.title)
+
+    def test_replacing_an_image_removes_the_old_asset(self):
+        self.save_draft(
+            [self.view_payload(self.view)],
+            {f"asset_{self.view.pk}": upload()},
+        )
+        draft = CustomizationDraft.objects.get(user=self.user)
+        first_asset = draft.configuration_json["views"][0]["image"]["asset_path"]
         first_preview = draft.preview_webp_url.name
 
         response = self.save_draft(
-            [self.zone_payload(self.view, self.zone, rotation=-30)],
-            {f"asset_{self.zone.pk}": upload(color=(30, 180, 90, 255))},
+            [self.view_payload(self.view, rotation=-30)],
+            {f"asset_{self.view.pk}": upload(color=(30, 180, 90, 255))},
             draft=draft,
         )
         self.assertEqual(response.status_code, 302)
         draft.refresh_from_db()
 
-        second_asset = draft.configuration_json["views"][0]["zones"][0]["asset_path"]
+        second_asset = draft.configuration_json["views"][0]["image"]["asset_path"]
         self.assertNotEqual(first_asset, second_asset)
         self.assertFalse(default_storage.exists(first_asset))
         self.assertTrue(default_storage.exists(second_asset))
         self.assertNotEqual(first_preview, draft.preview_webp_url.name)
         self.assertFalse(default_storage.exists(first_preview))
         self.assertEqual(
-            draft.configuration_json["views"][0]["zones"][0]["transform"]["rotation"],
+            draft.configuration_json["views"][0]["image"]["transform"]["rotation"],
             -30.0,
         )
 
-    def test_multi_view_customization_produces_a_pdf(self):
-        second_view = ProductView.objects.create(
-            product=self.product,
-            name="Back",
-            sort_order=2,
-            mockup_image=SimpleUploadedFile(
-                "back.png",
-                png_bytes((200, 200), (255, 255, 255, 255)),
-                content_type="image/png",
-            ),
-            canvas_width_px=200,
-            canvas_height_px=200,
-        )
-        second_zone = CustomizationZone.objects.create(
-            product_view=second_view,
-            name="Back print",
-            x=25,
-            y=25,
-            width=150,
-            height=150,
+    def test_every_side_gets_one_png_in_the_zip_archive(self):
+        back = self.make_view(name="Back", sort_order=2, size=(200, 120))
+        fixed = self.make_view(
+            name="Inside", sort_order=3, size=(120, 120), customizable=False
         )
 
         response = self.save_draft(
-            [
-                self.zone_payload(self.view, self.zone),
-                self.zone_payload(second_view, second_zone),
-            ],
+            [self.view_payload(self.view), self.view_payload(back)],
             {
-                f"asset_{self.zone.pk}": upload(),
-                f"asset_{second_zone.pk}": upload(
-                    size=(60, 60), color=(30, 30, 200, 255)
-                ),
+                f"asset_{self.view.pk}": upload(),
+                f"asset_{back.pk}": upload(size=(60, 60), color=(30, 30, 200, 255)),
             },
         )
         self.assertEqual(response.status_code, 302)
+
         draft = CustomizationDraft.objects.get(user=self.user)
         self.assertEqual(len(draft.configuration_json["views"]), 2)
 
@@ -282,48 +326,122 @@ class CustomizationFlowTests(TestCase):
         self.assertEqual(webhook_response.status_code, 202)
         draft.refresh_from_db()
 
-        self.assertTrue(draft.print_file_url.name.endswith(".pdf"))
-        with open(draft.print_file_url.path, "rb") as print_file:
-            self.assertTrue(print_file.read(5).startswith(b"%PDF"))
+        with zipfile.ZipFile(draft.print_file_url.path) as archive:
+            self.assertEqual(archive.namelist(), ["Front.png", "Back.png", "Inside.png"])
+            sizes = {}
+            for name in archive.namelist():
+                with Image.open(io.BytesIO(archive.read(name))) as printed:
+                    self.assertEqual(printed.format, "PNG")
+                    sizes[name] = printed.size
+
+        self.assertEqual(sizes["Front.png"], (200, 200))
+        self.assertEqual(sizes["Back.png"], (200, 120))
+        self.assertEqual(sizes["Inside.png"], (120, 120))
+        self.assertTrue(fixed.is_customizable is False)
+
+    def test_preview_uses_the_first_customized_side(self):
+        back = self.make_view(name="Back", sort_order=2, size=(120, 120))
+
+        self.save_draft(
+            [self.view_payload(back)],
+            {f"asset_{back.pk}": upload(size=(60, 60))},
+        )
+        draft = CustomizationDraft.objects.get(user=self.user)
+
+        with Image.open(draft.preview_webp_url.path) as preview:
+            self.assertEqual(preview.size, (120, 120))
+
+    def test_preview_keeps_transparency_while_print_output_stays_flat(self):
+        transparent = ProductView.objects.create(
+            product=self.product,
+            name="Cut-out",
+            sort_order=2,
+            mockup_image=SimpleUploadedFile(
+                "cut-out-mockup.png",
+                png_bytes((200, 200), (0, 0, 0, 0)),
+                content_type="image/png",
+            ),
+            canvas_width_px=200,
+            canvas_height_px=200,
+            print_x=50,
+            print_y=50,
+            print_width=100,
+            print_height=100,
+        )
+
+        self.save_draft(
+            [self.view_payload(transparent)],
+            {f"asset_{transparent.pk}": upload()},
+        )
+        draft = CustomizationDraft.objects.get(user=self.user)
+
+        # The preview keeps the alpha channel: workspace and catalogue cards must
+        # show the cut-out mockup, not a white rectangle around it.
+        with Image.open(draft.preview_webp_url.path) as preview:
+            self.assertEqual(preview.format, "WEBP")
+            self.assertEqual(preview.mode, "RGBA")
+            self.assertEqual(preview.getpixel((0, 0))[3], 0)
+
+        # The print archive is still flattened on white for the printing service.
+        response = self.trigger_webhook([draft.pk])
+        self.assertEqual(response.status_code, 202)
+        draft.refresh_from_db()
+
+        with zipfile.ZipFile(draft.print_file_url.path) as archive:
+            with Image.open(io.BytesIO(archive.read("Cut-out.png"))) as printed:
+                self.assertEqual(printed.mode, "RGB")
+                self.assertEqual(printed.getpixel((0, 0)), (255, 255, 255))
 
     def test_invalid_webhook_token_is_rejected(self):
         response = self.trigger_webhook([], token="wrong")
         self.assertEqual(response.status_code, 403)
 
     def test_exif_oriented_upload_uses_displayed_dimensions(self):
-        view_payload = self.zone_payload(self.view, self.zone)
+        payload = self.view_payload(self.view)
         for key in ("width", "height"):
-            del view_payload["zones"][0]["transform"][key]
+            del payload["image"]["transform"][key]
+
         response = self.save_draft(
-            [view_payload],
-            {f"asset_{self.zone.pk}": jpeg_upload(size=(40, 80), orientation=6)},
+            [payload],
+            {f"asset_{self.view.pk}": jpeg_upload(size=(40, 80), orientation=6)},
         )
         self.assertEqual(response.status_code, 302)
 
         draft = CustomizationDraft.objects.get(user=self.user)
-        stored_zone = draft.configuration_json["views"][0]["zones"][0]
-        # A 40x80 JPEG tagged with orientation 6 is displayed as 80x40.
-        self.assertEqual(stored_zone["natural_width"], 80)
-        self.assertEqual(stored_zone["natural_height"], 40)
-        self.assertEqual(stored_zone["transform"]["width"], 80)
-        self.assertEqual(stored_zone["transform"]["height"], 40)
+        image = draft.configuration_json["views"][0]["image"]
+        self.assertEqual(image["natural_width"], 80)
+        self.assertEqual(image["natural_height"], 40)
 
-    def test_zone_default_rotation_is_used_when_transform_omits_it(self):
-        self.zone.rotation = 30
-        self.zone.save(update_fields=["rotation"])
-        view_payload = self.zone_payload(self.view, self.zone)
-        del view_payload["zones"][0]["transform"]["rotation"]
+    def test_side_default_rotation_is_used_when_transform_omits_it(self):
+        self.view.rotation = 30
+        self.view.save(update_fields=["rotation"])
+        payload = self.view_payload(self.view)
+        del payload["image"]["transform"]["rotation"]
 
-        response = self.save_draft(
-            [view_payload], {f"asset_{self.zone.pk}": upload()}
-        )
-        self.assertEqual(response.status_code, 302)
+        self.save_draft([payload], {f"asset_{self.view.pk}": upload()})
 
         draft = CustomizationDraft.objects.get(user=self.user)
         self.assertEqual(
-            draft.configuration_json["views"][0]["zones"][0]["transform"]["rotation"],
+            draft.configuration_json["views"][0]["image"]["transform"]["rotation"],
             30.0,
         )
+
+    def test_transform_is_clamped_inside_the_print_area(self):
+        payload = self.view_payload(self.view, x=-500, y=-500, width=5000, height=5000)
+
+        self.save_draft([payload], {f"asset_{self.view.pk}": upload()})
+
+        draft = CustomizationDraft.objects.get(user=self.user)
+        transform = draft.configuration_json["views"][0]["image"]["transform"]
+        # The editor allows a 2x zoom, but the centre must stay inside the area.
+        self.assertLessEqual(transform["width"], 200)
+        self.assertLessEqual(transform["height"], 200)
+        center_x = transform["x"] + transform["width"] / 2
+        center_y = transform["y"] + transform["height"] / 2
+        self.assertGreaterEqual(center_x, 50)
+        self.assertLessEqual(center_x, 150)
+        self.assertGreaterEqual(center_y, 50)
+        self.assertLessEqual(center_y, 150)
 
     def test_unsupported_image_format_is_rejected(self):
         buffer = io.BytesIO()
@@ -335,19 +453,18 @@ class CustomizationFlowTests(TestCase):
         )
 
         response = self.save_draft(
-            [self.zone_payload(self.view, self.zone)],
-            {f"asset_{self.zone.pk}": unsupported},
+            [self.view_payload(self.view)],
+            {f"asset_{self.view.pk}": unsupported},
         )
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CustomizationDraft.objects.exists())
-        self.assertFalse(default_storage.exists("customization/drafts"))
 
     @override_settings(CUSTOMIZATION_MAX_IMAGE_PIXELS=1000)
     def test_upload_with_too_many_pixels_is_rejected(self):
         response = self.save_draft(
-            [self.zone_payload(self.view, self.zone)],
-            {f"asset_{self.zone.pk}": upload(size=(80, 40))},
+            [self.view_payload(self.view)],
+            {f"asset_{self.view.pk}": upload(size=(80, 40))},
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CustomizationDraft.objects.exists())
@@ -355,8 +472,8 @@ class CustomizationFlowTests(TestCase):
     @override_settings(CUSTOMIZATION_MAX_TOTAL_UPLOAD_MB=0)
     def test_total_upload_limit_is_enforced(self):
         response = self.save_draft(
-            [self.zone_payload(self.view, self.zone)],
-            {f"asset_{self.zone.pk}": upload()},
+            [self.view_payload(self.view)],
+            {f"asset_{self.view.pk}": upload()},
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CustomizationDraft.objects.exists())
@@ -369,18 +486,33 @@ class CustomizationFlowTests(TestCase):
         default_storage.save(foreign_path, SimpleUploadedFile("x.png", png_bytes()))
         self.addCleanup(default_storage.delete, foreign_path)
 
-        view_payload = self.zone_payload(self.view, self.zone)
-        view_payload["zones"][0]["asset_path"] = foreign_path
-        response = self.save_draft([view_payload], {})
+        payload = self.view_payload(self.view)
+        payload["image"]["asset_path"] = foreign_path
+        response = self.save_draft([payload], {})
         self.assertEqual(response.status_code, 302)
 
         self.assertEqual(CustomizationDraft.objects.count(), 1)
         self.assertTrue(CustomizationDraft.objects.filter(pk=other_draft.pk).exists())
 
     def test_non_string_asset_path_is_rejected(self):
-        view_payload = self.zone_payload(self.view, self.zone)
-        view_payload["zones"][0]["asset_path"] = 123
-        response = self.save_draft([view_payload], {})
+        payload = self.view_payload(self.view)
+        payload["image"]["asset_path"] = 123
+
+        response = self.save_draft([payload], {})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(CustomizationDraft.objects.exists())
+
+    def test_fixed_side_cannot_receive_an_image(self):
+        fixed = self.make_view(
+            name="Inside", sort_order=2, size=(120, 120), customizable=False
+        )
+
+        response = self.save_draft(
+            [{"product_view_id": fixed.pk, "image": {"transform": {}}}],
+            {f"asset_{fixed.pk}": upload()},
+        )
+
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CustomizationDraft.objects.exists())
 
@@ -390,30 +522,24 @@ class CustomizationFlowTests(TestCase):
             base_price=Decimal("25.00"),
             stock_quantity=5,
         )
-        empty_view = ProductView.objects.create(
+        ProductView.objects.create(
             product=product,
             name="Front",
             sort_order=1,
-        )
-        CustomizationZone.objects.create(
-            product_view=empty_view,
-            name="Chest",
-            x=50,
-            y=50,
-            width=100,
-            height=100,
+            print_width=100,
+            print_height=100,
         )
 
         response = self.client.get(
             reverse("customization:editor", kwargs={"slug": product.slug})
         )
+
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["editor_payload"]["views"], [])
-        messages = [str(message) for message in response.context["messages"]]
-        self.assertIn("This product has no customizable areas yet.", messages)
 
     def test_empty_configuration_is_rejected(self):
         response = self.save_draft([], {})
+
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CustomizationDraft.objects.exists())
         self.assertEqual(
@@ -479,10 +605,11 @@ class CustomizationFlowTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["detail"], "Invalid webhook token.")
 
-    def test_other_user_cannot_access_or_modify_draft(self):
+    def test_other_user_cannot_access_or_modify_project(self):
         draft = CustomizationDraft.objects.create(
             user=self.user,
             product=self.product,
+            name="Private project",
             configuration_json={"views": []},
         )
         other_user = get_user_model().objects.create_user(
@@ -515,6 +642,62 @@ class CustomizationFlowTests(TestCase):
         self.assertTrue(CustomizationDraft.objects.filter(pk=draft.pk).exists())
         self.assertEqual(CustomizationDraft.objects.count(), 1)
 
+    def test_project_list_only_shows_the_users_own_projects(self):
+        CustomizationDraft.objects.create(
+            user=self.user, product=self.product, name="Mine"
+        )
+        other_user = get_user_model().objects.create_user(
+            username="other-artist",
+            password="s3cret-pass",
+        )
+        CustomizationDraft.objects.create(
+            user=other_user, product=self.product, name="Theirs"
+        )
+
+        response = self.client.get(reverse("customization:list"))
+
+        self.assertContains(response, "Mine")
+        self.assertNotContains(response, "Theirs")
+
+    def test_project_list_is_paginated(self):
+        for index in range(3):
+            CustomizationDraft.objects.create(
+                user=self.user,
+                product=self.product,
+                name=f"Project {index}",
+            )
+
+        with self.settings(PROJECTS_PAGE_SIZE=2):
+            first_page = self.client.get(reverse("customization:list"))
+            second_page = self.client.get(reverse("customization:list"), {"page": 2})
+            out_of_range = self.client.get(
+                reverse("customization:list"), {"page": 999}
+            )
+            invalid = self.client.get(reverse("customization:list"), {"page": "abc"})
+
+        self.assertEqual(first_page.context["page_obj"].number, 1)
+        self.assertEqual(len(first_page.context["drafts"]), 2)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+        self.assertEqual(len(second_page.context["drafts"]), 1)
+        # A missing or broken ?page= never turns into a 404.
+        self.assertEqual(out_of_range.status_code, 200)
+        self.assertEqual(out_of_range.context["page_obj"].number, 2)
+        self.assertEqual(invalid.status_code, 200)
+        self.assertEqual(invalid.context["page_obj"].number, 1)
+        self.assertContains(first_page, 'rel="next"')
+        self.assertContains(second_page, 'rel="prev"')
+        self.assertContains(first_page, "Page 1 of 2")
+
+    def test_project_list_shows_no_pagination_when_everything_fits(self):
+        CustomizationDraft.objects.create(
+            user=self.user, product=self.product, name="Only project"
+        )
+
+        response = self.client.get(reverse("customization:list"))
+
+        self.assertFalse(response.context["is_paginated"])
+        self.assertNotContains(response, "list-pagination")
+
     def test_staff_see_the_deactivate_action_in_the_editor(self):
         staff = get_user_model().objects.create_user(
             username="staff",
@@ -537,7 +720,7 @@ class CustomizationFlowTests(TestCase):
         )
         self.assertContains(
             response,
-            "Sides, printable areas, saved customizations and uploaded files are kept.",
+            "Sides, printable areas, saved projects and uploaded files are kept.",
         )
 
     def test_customers_do_not_see_the_deactivate_action(self):
@@ -549,24 +732,19 @@ class CustomizationFlowTests(TestCase):
         self.assertNotContains(response, "Deactivate product")
         self.assertNotContains(response, "deactivate-product-modal")
 
-    def test_staff_see_the_deactivate_action_without_editable_views(self):
+    def test_staff_see_the_deactivate_action_without_customizable_sides(self):
         product = Product.objects.create(
             title="Unprepared Tee",
             base_price=Decimal("25.00"),
             stock_quantity=5,
         )
-        empty_view = ProductView.objects.create(
+        ProductView.objects.create(
             product=product,
             name="Front",
             sort_order=1,
-        )
-        CustomizationZone.objects.create(
-            product_view=empty_view,
-            name="Chest",
-            x=50,
-            y=50,
-            width=100,
-            height=100,
+            mockup_image="products/mockups/front.webp",
+            canvas_width_px=200,
+            canvas_height_px=200,
         )
         staff = get_user_model().objects.create_user(
             username="staff",
@@ -580,17 +758,20 @@ class CustomizationFlowTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "This product cannot be customized yet.")
+        self.assertContains(
+            response, "This product is sold exactly as shown: it has no customizable sides yet."
+        )
         self.assertContains(response, "Deactivate product")
         self.assertContains(
             response,
             reverse("products:deactivate", kwargs={"slug": product.slug}),
         )
 
-    def test_deactivated_product_hides_its_drafts_until_reactivated(self):
+    def test_deactivated_product_hides_its_projects_until_reactivated(self):
         draft = CustomizationDraft.objects.create(
             user=self.user,
             product=self.product,
+            name="Archived project",
             configuration_json={"views": []},
         )
         self.product.is_active = False
@@ -604,7 +785,7 @@ class CustomizationFlowTests(TestCase):
             reverse("customization:draft_payload", args=[draft.pk])
         )
 
-        self.assertNotContains(listing, self.product.title)
+        self.assertNotContains(listing, "Archived project")
         self.assertEqual(detail.status_code, 404)
         self.assertEqual(payload.status_code, 404)
 
@@ -612,4 +793,4 @@ class CustomizationFlowTests(TestCase):
         self.product.save(update_fields=["is_active", "updated_at"])
 
         listing = self.client.get(reverse("customization:list"))
-        self.assertContains(listing, self.product.title)
+        self.assertContains(listing, "Archived project")

@@ -13,6 +13,9 @@ RESAMPLING = getattr(Image, "Resampling", Image).LANCZOS
 # Pillow's affine transform (used by rotate with expand=True) only accepts
 # NEAREST, BILINEAR or BICUBIC resampling.
 ROTATION_RESAMPLING = getattr(Image, "Resampling", Image).BICUBIC
+# Rotated artwork is rendered at twice the size and then downscaled, which
+# removes the stair-stepping BICUBIC leaves on hard edges.
+ROTATION_SUPERSAMPLE = 2
 
 
 def _load_storage_image(path):
@@ -29,17 +32,61 @@ def _load_field_image(field_file):
         return ImageOps.exif_transpose(image).convert("RGBA")
 
 
-def _group_items_by_view(configuration):
-    grouped = {}
-    for view_entry in (configuration or {}).get("views", []):
-        view_id = view_entry.get("product_view_id")
-        if view_id:
-            grouped[view_id] = view_entry.get("zones", [])
-    return grouped
+def flatten_on_white(image):
+    """Drop transparency by compositing the image on a white background.
+
+    Only the print pipeline uses this (``customization.services.printing``): the
+    printing service expects opaque PNGs. Previews keep their alpha channel so a
+    cut-out mockup stays transparent in the workspace and catalogue cards.
+    """
+
+    flat = Image.new("RGB", image.size, "white")
+    flat.paste(image, mask=image.getchannel("A"))
+    return flat
 
 
-def render_view(view, zone_items, target_width=None):
-    """Render one product view at mockup resolution (or scaled for a preview)."""
+def configuration_views(configuration):
+    """Return the saved per-side entries that actually carry an image."""
+
+    entries = (configuration or {}).get("views", [])
+    if not isinstance(entries, list):
+        return []
+    selected = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        image = entry.get("image")
+        if isinstance(image, dict) and image.get("asset_path"):
+            selected.append(entry)
+    return selected
+
+
+def _render_artwork(asset_path, target_width, target_height, rotation):
+    """Load, resize and rotate one customer image (clockwise, like the editor)."""
+
+    image = _load_storage_image(asset_path)
+    target_width = max(1, round(target_width))
+    target_height = max(1, round(target_height))
+
+    if not rotation:
+        return image.resize((target_width, target_height), RESAMPLING)
+
+    factor = ROTATION_SUPERSAMPLE
+    big = image.resize((target_width * factor, target_height * factor), RESAMPLING)
+    # CSS/JS rotations are clockwise; Pillow rotates counter-clockwise.
+    big = big.rotate(-rotation, expand=True, resample=ROTATION_RESAMPLING)
+    return big.resize(
+        (max(1, round(big.width / factor)), max(1, round(big.height / factor))),
+        RESAMPLING,
+    )
+
+
+def render_view(view, image_entry=None, target_width=None):
+    """Render one product side at mockup resolution (or scaled for a preview).
+
+    ``image_entry`` is the saved configuration entry of the side. Fixed sides
+    have no entry: their mockup is returned as it is.
+    """
 
     canvas_width = view.canvas_width_px or 0
     canvas_height = view.canvas_height_px or 0
@@ -59,63 +106,53 @@ def render_view(view, zone_items, target_width=None):
     canvas = Image.new("RGBA", (output_width, output_height), (255, 255, 255, 0))
     canvas.alpha_composite(base)
 
-    zones = {zone.pk: zone for zone in view.zones.all()}
+    area = view.print_area
+    image_data = (image_entry or {}).get("image") or {}
+    asset_path = image_data.get("asset_path")
+    if area is None or not asset_path:
+        return canvas
 
-    for item in zone_items:
-        zone = zones.get(item.get("zone_id"))
-        asset_path = item.get("asset_path")
-        if zone is None or not asset_path:
-            continue
+    try:
         if not default_storage.exists(asset_path):
-            continue
+            return canvas
+    except (OSError, ValueError):
+        return canvas
 
-        transform = item.get("transform") or {}
-        try:
-            x = float(transform.get("x", zone.x))
-            y = float(transform.get("y", zone.y))
-            width = float(transform.get("width", zone.width))
-            height = float(transform.get("height", zone.height))
-            rotation = float(transform.get("rotation", 0))
-        except (TypeError, ValueError):
-            continue
-        if width <= 0 or height <= 0:
-            continue
+    transform = image_data.get("transform") or {}
+    try:
+        x = float(transform.get("x", area.x))
+        y = float(transform.get("y", area.y))
+        width = float(transform.get("width", area.width))
+        height = float(transform.get("height", area.height))
+        rotation = float(transform.get("rotation", 0))
+    except (TypeError, ValueError):
+        return canvas
+    if width <= 0 or height <= 0:
+        return canvas
 
-        image = _load_storage_image(asset_path).resize(
-            (max(1, round(width * scale)), max(1, round(height * scale))),
-            RESAMPLING,
-        )
-        if rotation:
-            # CSS/JS rotations are clockwise; Pillow rotates counter-clockwise.
-            image = image.rotate(
-                -rotation, expand=True, resample=ROTATION_RESAMPLING
-            )
+    image = _render_artwork(asset_path, width * scale, height * scale, rotation)
 
-        center_x = (x + width / 2) * scale
-        center_y = (y + height / 2) * scale
-        left = round(center_x - image.width / 2)
-        top = round(center_y - image.height / 2)
+    center_x = (x + width / 2) * scale
+    center_y = (y + height / 2) * scale
+    left = round(center_x - image.width / 2)
+    top = round(center_y - image.height / 2)
 
-        layer = Image.new("RGBA", (output_width, output_height), (0, 0, 0, 0))
-        layer.paste(image, (left, top), image)
+    layer = Image.new("RGBA", (output_width, output_height), (0, 0, 0, 0))
+    layer.paste(image, (left, top), image)
 
-        # Clip the transformed image to the area chosen by the admin.
-        mask = Image.new("L", (output_width, output_height), 0)
-        draw = ImageDraw.Draw(mask)
-        draw.rectangle(
-            [
-                round(zone.x * scale),
-                round(zone.y * scale),
-                round((zone.x + zone.width) * scale),
-                round((zone.y + zone.height) * scale),
-            ],
-            fill=255,
-        )
-        alpha = ImageChops.multiply(layer.getchannel("A"), mask)
-        layer.putalpha(alpha)
-        canvas = Image.alpha_composite(canvas, layer)
-
-    return canvas
+    # Clip the transformed image to the printable area chosen by the admin.
+    mask = Image.new("L", (output_width, output_height), 0)
+    ImageDraw.Draw(mask).rectangle(
+        [
+            round(area.x * scale),
+            round(area.y * scale),
+            round((area.x + area.width) * scale),
+            round((area.y + area.height) * scale),
+        ],
+        fill=255,
+    )
+    layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
+    return Image.alpha_composite(canvas, layer)
 
 
 def _encode_webp(image, quality):
@@ -124,40 +161,31 @@ def _encode_webp(image, quality):
     return buffer.getvalue()
 
 
-def _build_preview_sheet(draft, preview_width=900):
-    configuration = draft.configuration_json or {}
-    items_by_view = _group_items_by_view(configuration)
-    views = {view.pk: view for view in draft.product.views.prefetch_related("zones").all()}
+def _build_primary_preview(draft, max_width=None):
+    """Render the first customized side (by ``sort_order``) of the project.
 
-    rendered = []
-    for view_id, zone_items in items_by_view.items():
-        view = views.get(view_id)
-        if view is None or not zone_items:
+    The returned image keeps its alpha channel: transparent mockups must stay
+    transparent in the WebP preview shown by the workspace and catalogue cards.
+    """
+
+    max_width = max_width or settings.CUSTOMIZATION_PREVIEW_MAX_WIDTH
+    views = {view.pk: view for view in draft.product.views.all()}
+
+    for entry in configuration_views(draft.configuration_json):
+        view = views.get(entry.get("product_view_id"))
+        if view is None:
             continue
-        target_width = min(preview_width, view.canvas_width_px or preview_width)
-        rendered.append(render_view(view, zone_items, target_width=target_width))
+        target_width = min(max_width, view.canvas_width_px or max_width)
+        rendered = render_view(view, entry, target_width=target_width)
+        return rendered
 
-    if not rendered:
-        raise ValidationError("There is nothing to render for this customization.")
-    if len(rendered) == 1:
-        return rendered[0]
-
-    gap = 16
-    width = max(image.width for image in rendered)
-    height = sum(image.height for image in rendered) + gap * (len(rendered) - 1)
-    sheet = Image.new("RGBA", (width, height), (255, 255, 255, 0))
-    top = 0
-    for image in rendered:
-        left = (width - image.width) // 2
-        sheet.alpha_composite(image, (left, top))
-        top += image.height + gap
-    return sheet
+    raise ValidationError("There is nothing to render for this customization.")
 
 
 def generate_preview(draft):
-    """Render and store the combined WebP preview, keeping it below the cap."""
+    """Render and store the WebP preview of the main side, below the byte cap."""
 
-    preview = _build_preview_sheet(draft)
+    preview = _build_primary_preview(draft)
     max_bytes = settings.CUSTOMIZATION_PREVIEW_MAX_BYTES
     quality = settings.CUSTOMIZATION_PREVIEW_WEBP_QUALITY
     payload = _encode_webp(preview, quality)

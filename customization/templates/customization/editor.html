@@ -3,11 +3,11 @@
 
 {% block title %}Customize {{ product.title }} | AuraVisual Ecommerce{% endblock %}
 
-{% block meta_description %}Upload your artwork and position it on {{ product.title }} before adding the personalised product to your cart.{% endblock %}
+{% block meta_description %}Upload one image per customizable side of {{ product.title }} and place it exactly where you want it before saving your project.{% endblock %}
 {% block og_title %}Customize {{ product.title }} | AuraVisual Ecommerce{% endblock %}
-{% block og_description %}Upload your artwork and position it on {{ product.title }} before adding the personalised product to your cart.{% endblock %}
+{% block og_description %}Upload one image per customizable side of {{ product.title }} and place it exactly where you want it before saving your project.{% endblock %}
 {% block twitter_title %}Customize {{ product.title }} | AuraVisual Ecommerce{% endblock %}
-{% block twitter_description %}Upload your artwork and position it on {{ product.title }} before adding the personalised product to your cart.{% endblock %}
+{% block twitter_description %}Upload one image per customizable side of {{ product.title }} and place it exactly where you want it before saving your project.{% endblock %}
 
 {% block extra_css %}
 <link href="{% static 'css/customization-editor.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
@@ -17,7 +17,7 @@
 <section id="customization-editor">
     <div class="section-title">
         <h2>Customize {{ product.title }}</h2>
-        <p>{{ product.description|default:"Upload an image for each area, then drag it to position it exactly where you want it." }}</p>
+        <p>{{ product.description|default:"Pick a side, upload one image and drag it exactly where you want it." }}</p>
     </div>
 
     {% if editor_payload.views %}
@@ -31,26 +31,27 @@
         <div class="row g-4">
             <div class="col-lg-8">
                 <div class="info-card">
-                    <div id="editor-view-tabs" class="editor-view-tabs" role="tablist" aria-label="Product views"></div>
+                    <div id="editor-view-tabs" class="editor-view-tabs" role="tablist" aria-label="Customizable sides"></div>
 
                     <div class="editor-stage-wrap">
                         <div id="editor-stage" class="editor-stage">
                             <img id="editor-mockup" src="" alt="" class="editor-mockup">
-                            <div id="editor-zones" class="editor-zones"></div>
+                            <div id="editor-artwork" class="editor-artwork"></div>
                         </div>
                     </div>
 
                     <p class="small text-muted mb-0 mt-3">
                         <i class="bi bi-info-circle me-1"></i>
-                        Click an area to upload an image, then drag it to reposition it. The order of the saved views is preserved.
+                        Sides without an image are not customized: they keep the look you see here.
+                        Your preview uses the first side you customized.
                     </p>
                 </div>
             </div>
 
             <div class="col-lg-4">
                 <div class="info-card editor-sidebar">
-                    <h3>Selected area</h3>
-                    <p id="editor-zone-name" class="fw-semibold mb-2">Select an area on the product.</p>
+                    <h3>Selected side</h3>
+                    <p id="editor-side-name" class="fw-semibold mb-2">Select a side.</p>
 
                     <button type="button" id="editor-upload-button" class="btn-get-started w-100 justify-content-center" disabled>
                         <i class="bi bi-upload me-2"></i>Choose image
@@ -62,7 +63,7 @@
                                 <span>Size</span>
                                 <span id="editor-scale-value">100%</span>
                             </label>
-                            <input type="range" id="editor-scale" class="form-range" min="25" max="100" step="1" value="100">
+                            <input type="range" id="editor-scale" class="form-range" min="25" max="200" step="1" value="100">
                         </div>
                         <div class="mb-3" id="editor-rotation-row">
                             <label for="editor-rotation" class="form-label d-flex justify-content-between">
@@ -80,9 +81,17 @@
 
                     <hr>
 
+                    <div class="mb-3">
+                        <label class="form-label" for="editor-project-name">Project name</label>
+                        <input type="text" class="form-control" id="editor-project-name" name="name"
+                               maxlength="120" value="{{ editor_payload.draft_name }}"
+                               placeholder="{{ product.title }} design">
+                        <div class="form-text">Shown in your projects list and used for the print files.</div>
+                    </div>
+
                     <div class="d-grid gap-2">
                         <button type="submit" id="editor-save" class="btn-get-started justify-content-center">
-                            <i class="bi bi-check2-circle me-2"></i>Save customization
+                            <i class="bi bi-check2-circle me-2"></i>Save project
                         </button>
                         {% if draft %}
                         <a href="{% url 'customization:draft_detail' draft.pk %}" class="btn btn-outline-secondary">
@@ -109,7 +118,7 @@
     {{ editor_payload|json_script:"customization-editor-data" }}
     {% else %}
     <div class="text-center">
-        <p>This product cannot be customized yet.</p>
+        <p>This product is sold exactly as shown: it has no customizable sides yet.</p>
         <a href="{% url 'products:list' %}" class="btn-get-started">
             <i class="bi bi-arrow-left me-2"></i>Back to shop
         </a>
@@ -130,8 +139,8 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p>This hides <strong>{{ product.title }}</strong> from the shop, customization editor and draft list.</p>
-                    <p class="mb-0">Sides, printable areas, saved customizations and uploaded files are kept. A staff user can reactivate the product from the Django admin.</p>
+                    <p>This hides <strong>{{ product.title }}</strong> from the shop, the customization editor and your projects list.</p>
+                    <p class="mb-0">Sides, printable areas, saved projects and uploaded files are kept. A staff user can reactivate the product from the Django admin.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

@@ -57,12 +57,12 @@
   -webkit-user-drag: none;
 }
 
-.editor-zones {
+.editor-artwork {
   position: absolute;
   inset: 0;
 }
 
-.editor-zone-clip {
+.editor-print-area {
   position: absolute;
   overflow: hidden;
   border: 1px dashed rgba(14, 58, 82, 0.55);
@@ -73,18 +73,18 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.editor-zone-clip:hover {
+.editor-print-area:hover {
   border-color: rgb(14, 58, 82);
 }
 
-.editor-zone-clip.is-selected {
+.editor-print-area.is-selected {
   border: 2px solid #0d6efd;
   box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.18);
   background: transparent;
   z-index: 2;
 }
 
-.editor-zone-image {
+.editor-artwork-image {
   position: absolute;
   object-fit: fill;
   transform-origin: center;
@@ -95,11 +95,11 @@
   max-width: none;
 }
 
-.editor-zone-image:active {
+.editor-artwork-image:active {
   cursor: grabbing;
 }
 
-.editor-zone-hint {
+.editor-artwork-hint {
   position: absolute;
   inset: 0;
   display: flex;
@@ -128,4 +128,15 @@
     padding: 0.4rem 0.8rem;
     font-size: 0.82rem;
   }
+}
+
+.editor-view-tab.has-image::after {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-left: 0.4rem;
+    border-radius: 50%;
+    background: #2f855a;
+    display: inline-block;
+    vertical-align: middle;
 }

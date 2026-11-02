@@ -1,0 +1,51 @@
+{% if preview_url %}
+<img src="{{ preview_url }}"
+     alt="{{ alt }}"
+     {% if extra_class %}class="{{ extra_class }}" {% endif %}loading="{{ loading|default:'lazy' }}"
+     decoding="async">
+{% elif preview_layers %}
+<svg class="home-card-composite{% if extra_class %} {{ extra_class }}{% endif %}"
+     viewBox="0 0 {{ preview_canvas_width }} {{ preview_canvas_height }}"
+     role="img"
+     aria-label="{{ alt }}"
+     preserveAspectRatio="xMidYMid meet"
+     xmlns="http://www.w3.org/2000/svg">
+    <title>{{ alt }}</title>
+    <defs>
+        {% for layer in preview_layers %}
+        <clipPath id="home-preview-clip-{{ preview_scope|default:'card' }}-{{ preview_id }}-{{ forloop.counter }}">
+            <rect x="{{ layer.zone_x }}"
+                  y="{{ layer.zone_y }}"
+                  width="{{ layer.zone_width }}"
+                  height="{{ layer.zone_height }}" />
+        </clipPath>
+        {% endfor %}
+    </defs>
+
+    {% if preview_mockup_url %}
+    <image href="{{ preview_mockup_url }}"
+           x="0"
+           y="0"
+           width="{{ preview_canvas_width }}"
+           height="{{ preview_canvas_height }}"
+           preserveAspectRatio="none" />
+    {% endif %}
+
+    {% for layer in preview_layers %}
+    <g clip-path="url(#home-preview-clip-{{ preview_scope|default:'card' }}-{{ preview_id }}-{{ forloop.counter }})">
+        <image href="{{ layer.asset_url }}"
+               x="{{ layer.x }}"
+               y="{{ layer.y }}"
+               width="{{ layer.width }}"
+               height="{{ layer.height }}"
+               transform="rotate({{ layer.rotation }} {{ layer.center_x }} {{ layer.center_y }})"
+               preserveAspectRatio="none" />
+    </g>
+    {% endfor %}
+</svg>
+{% elif preview_mockup_url %}
+<img src="{{ preview_mockup_url }}"
+     alt="{{ alt }}"
+     {% if extra_class %}class="{{ extra_class }}" {% endif %}loading="{{ loading|default:'lazy' }}"
+     decoding="async">
+{% endif %}

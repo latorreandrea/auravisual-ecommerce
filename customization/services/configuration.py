@@ -15,6 +15,10 @@ from .assets import (
     validate_asset_file,
 )
 
+# The editor lets customers zoom up to twice the printable area; the server
+# accepts the same range and clips whatever exceeds the area.
+MAX_AREA_SCALE = 2.0
+
 
 def load_configuration(raw):
     if isinstance(raw, dict):
@@ -58,11 +62,13 @@ def _fit_dimensions(natural_width, natural_height, max_width, max_height, allow_
     return max(1.0, natural_width * ratio), max(1.0, natural_height * ratio)
 
 
-def _normalize_transform(raw_transform, zone, natural_width, natural_height):
+def _normalize_transform(raw_transform, area, natural_width, natural_height):
     raw_transform = raw_transform if isinstance(raw_transform, dict) else {}
     default_width, default_height = _fit_dimensions(
-        natural_width, natural_height, zone.width, zone.height
+        natural_width, natural_height, area.width, area.height
     )
+    max_width = float(area.width) * MAX_AREA_SCALE
+    max_height = float(area.height) * MAX_AREA_SCALE
 
     if raw_transform.get("width") is None and raw_transform.get("scale") is not None:
         scale = _as_float(raw_transform.get("scale"), "scale", 1.0)
@@ -72,33 +78,37 @@ def _normalize_transform(raw_transform, zone, natural_width, natural_height):
         width = _as_float(raw_transform.get("width"), "width", default_width)
         height = _as_float(raw_transform.get("height"), "height", default_height)
 
-    if not zone.allow_scaling:
+    if not area.allow_scaling:
         width, height = default_width, default_height
 
-    width = min(max(width, 1.0), float(zone.width))
-    height = min(max(height, 1.0), float(zone.height))
+    width = min(max(width, 1.0), max_width)
+    height = min(max(height, 1.0), max_height)
 
-    if zone.aspect_ratio_locked or not zone.allow_scaling:
+    if area.aspect_ratio_locked or not area.allow_scaling:
         aspect_ratio = natural_width / natural_height
         height = width / aspect_ratio
-        if height > zone.height:
-            height = float(zone.height)
+        if height > max_height:
+            height = max_height
             width = height * aspect_ratio
-        width = min(max(width, 1.0), float(zone.width))
+        width = min(max(width, 1.0), max_width)
 
-    max_x = max(float(zone.x), float(zone.x) + float(zone.width) - width)
-    max_y = max(float(zone.y), float(zone.y) + float(zone.height) - height)
-    x = _as_float(raw_transform.get("x"), "x", float(zone.x) + (zone.width - width) / 2)
-    y = _as_float(raw_transform.get("y"), "y", float(zone.y) + (zone.height - height) / 2)
-    x = min(max(x, float(zone.x)), max_x)
-    y = min(max(y, float(zone.y)), max_y)
+    left = float(area.x)
+    top = float(area.y)
+    x = _as_float(raw_transform.get("x"), "x", left + (float(area.width) - width) / 2)
+    y = _as_float(raw_transform.get("y"), "y", top + (float(area.height) - height) / 2)
+    # Keep the centre of the image inside the printable area, exactly like the
+    # browser editor does, so zoomed-in artwork cannot be dragged away.
+    center_x = min(max(x + width / 2, left), left + float(area.width))
+    center_y = min(max(y + height / 2, top), top + float(area.height))
+    x = center_x - width / 2
+    y = center_y - height / 2
 
     rotation = _as_float(
         raw_transform.get("rotation"),
         "rotation",
-        float(zone.rotation or 0.0),
+        float(area.rotation or 0.0),
     )
-    if zone.allow_rotation:
+    if area.allow_rotation:
         rotation = ((rotation + 180.0) % 360.0) - 180.0
     else:
         rotation = 0.0
@@ -114,24 +124,21 @@ def _normalize_transform(raw_transform, zone, natural_width, natural_height):
 
 
 def build_configuration(product, raw, draft, uploaded_files):
-    """Validate the payload, store new assets and return the normalized config."""
+    """Validate the payload, store new assets and return the saved configuration.
 
-    views = {
-        view.pk: view
-        for view in product.views.prefetch_related("zones").all()
-    }
-    zones = {
-        zone.pk: zone
-        for view in views.values()
-        for zone in view.zones.all()
-    }
+    Each customizable side carries at most one customer image, so the saved
+    JSON is a flat list of ``views`` entries: ``{product_view_id, view_name,
+    image}``.
+    """
+
+    views = {view.pk: view for view in product.views.all()}
 
     raw_views = raw.get("views")
     if not isinstance(raw_views, list) or not raw_views:
         raise ValidationError("Add at least one image to the product.")
 
     entries = []
-    seen_zones = set()
+    seen_views = set()
 
     for raw_view in raw_views:
         if not isinstance(raw_view, dict):
@@ -140,61 +147,56 @@ def build_configuration(product, raw, draft, uploaded_files):
         view = views.get(view_id)
         if view is None:
             raise ValidationError("The selected product view does not exist.")
+        area = view.print_area
+        if area is None:
+            raise ValidationError(f'The side "{view.name}" cannot be customized.')
+        if view_id in seen_views:
+            raise ValidationError(f'The side "{view.name}" appears more than once.')
+        seen_views.add(view_id)
 
-        raw_zones = raw_view.get("zones") or []
-        if not isinstance(raw_zones, list):
-            raise ValidationError("Invalid zones entry.")
+        raw_image = raw_view.get("image") or {}
+        if not isinstance(raw_image, dict):
+            raise ValidationError("Invalid image entry.")
 
-        for raw_zone in raw_zones:
-            if not isinstance(raw_zone, dict):
-                raise ValidationError("Invalid zone entry.")
-            zone_id = _as_int(raw_zone.get("zone_id"), "zone")
-            zone = zones.get(zone_id)
-            if zone is None or zone.product_view_id != view.pk:
-                raise ValidationError("The selected customization area does not exist.")
-            if zone_id in seen_zones:
-                raise ValidationError(f'The area "{zone.name}" appears more than once.')
-            seen_zones.add(zone_id)
+        uploaded_file = uploaded_files.get(view_id)
+        raw_existing_path = raw_image.get("asset_path")
+        if raw_existing_path is None:
+            existing_path = ""
+        elif isinstance(raw_existing_path, str):
+            existing_path = raw_existing_path.strip()
+        else:
+            raise ValidationError("Invalid existing image reference.")
 
-            uploaded_file = uploaded_files.get(zone_id)
-            raw_existing_path = raw_zone.get("asset_path")
-            if raw_existing_path is None:
-                existing_path = ""
-            elif isinstance(raw_existing_path, str):
-                existing_path = raw_existing_path.strip()
-            else:
+        if uploaded_file is not None:
+            image_info = validate_asset_file(uploaded_file, area)
+            natural_width, natural_height = image_info["width"], image_info["height"]
+            source = "upload"
+        elif existing_path:
+            if not is_draft_asset_path(draft, existing_path):
                 raise ValidationError("Invalid existing image reference.")
+            if not default_storage.exists(existing_path):
+                raise ValidationError("A previously uploaded image is missing.")
+            natural_width, natural_height = asset_dimensions(existing_path)
+            image_info = None
+            source = "existing"
+        else:
+            # No image for this side: the customer did not customize it.
+            continue
 
-            if uploaded_file is not None:
-                image_info = validate_asset_file(uploaded_file, zone)
-                natural_width, natural_height = image_info["width"], image_info["height"]
-                source = "upload"
-            elif existing_path:
-                if not is_draft_asset_path(draft, existing_path):
-                    raise ValidationError("Invalid existing image reference.")
-                if not default_storage.exists(existing_path):
-                    raise ValidationError("A previously uploaded image is missing.")
-                natural_width, natural_height = asset_dimensions(existing_path)
-                image_info = None
-                source = "existing"
-            else:
-                # Empty area: the user did not customize it.
-                continue
-
-            entries.append(
-                {
-                    "view": view,
-                    "zone": zone,
-                    "uploaded_file": uploaded_file,
-                    "image_info": image_info,
-                    "existing_path": existing_path,
-                    "source": source,
-                    "natural_width": natural_width,
-                    "natural_height": natural_height,
-                    "raw_transform": raw_zone.get("transform") or {},
-                    "original_name": Path(str(raw_zone.get("original_name") or "")).name,
-                }
-            )
+        entries.append(
+            {
+                "view": view,
+                "area": area,
+                "uploaded_file": uploaded_file,
+                "image_info": image_info,
+                "existing_path": existing_path,
+                "source": source,
+                "natural_width": natural_width,
+                "natural_height": natural_height,
+                "raw_transform": raw_image.get("transform") or {},
+                "original_name": Path(str(raw_image.get("original_name") or "")).name,
+            }
+        )
 
     if not entries:
         raise ValidationError("Add at least one image to the product.")
@@ -204,19 +206,16 @@ def build_configuration(product, raw, draft, uploaded_files):
     for entry in entries:
         entry["transform"] = _normalize_transform(
             entry["raw_transform"],
-            entry["zone"],
+            entry["area"],
             entry["natural_width"],
             entry["natural_height"],
         )
 
-    grouped = {}
+    grouped = []
     saved_asset_paths = []
     try:
         for entry in entries:
             view = entry["view"]
-            zone = entry["zone"]
-            transform = entry["transform"]
-
             if entry["source"] == "upload":
                 asset_path, asset_url = save_asset(
                     draft, entry["uploaded_file"], entry["image_info"]
@@ -230,24 +229,18 @@ def build_configuration(product, raw, draft, uploaded_files):
                 asset_url = default_storage.url(asset_path)
                 original_name = entry["original_name"]
 
-            view_entry = grouped.setdefault(
-                view.pk,
+            grouped.append(
                 {
                     "product_view_id": view.pk,
                     "view_name": view.name,
-                    "zones": [],
-                },
-            )
-            view_entry["zones"].append(
-                {
-                    "zone_id": zone.pk,
-                    "zone_name": zone.name,
-                    "asset_path": asset_path,
-                    "asset_url": asset_url,
-                    "original_name": Path(original_name or "").name,
-                    "natural_width": entry["natural_width"],
-                    "natural_height": entry["natural_height"],
-                    "transform": transform,
+                    "image": {
+                        "asset_path": asset_path,
+                        "asset_url": asset_url,
+                        "original_name": Path(original_name or "").name,
+                        "natural_width": entry["natural_width"],
+                        "natural_height": entry["natural_height"],
+                        "transform": entry["transform"],
+                    },
                 }
             )
     except Exception:
@@ -255,11 +248,10 @@ def build_configuration(product, raw, draft, uploaded_files):
         delete_assets(saved_asset_paths)
         raise
 
-    ordered = sorted(
-        grouped.values(),
+    grouped.sort(
         key=lambda item: (
             views[item["product_view_id"]].sort_order,
             views[item["product_view_id"]].pk,
-        ),
+        )
     )
-    return {"views": ordered}
+    return {"views": grouped}

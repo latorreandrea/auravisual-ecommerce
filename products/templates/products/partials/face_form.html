@@ -12,8 +12,8 @@
             </p>
             <h3 data-face-display-name>{% if view_form.name.value %}{{ view_form.name.value }}{% else %}New side{% endif %}</h3>
         </div>
-        <span class="wizard-face-badge">
-            <i class="bi bi-bounding-box-circles me-1"></i>One printable area
+        <span class="wizard-face-badge" data-face-badge>
+            <i class="bi bi-bounding-box-circles me-1"></i><span data-face-badge-text>Customizable side</span>
         </span>
     </div>
 
@@ -47,65 +47,83 @@
                 {% endfor %}
             </div>
 
-            <div class="mb-3">
-                <label class="form-label" for="{{ zone_form.name.id_for_label }}">{{ zone_form.name.label }}</label>
-                {{ zone_form.name }}
-                <div class="form-text">{{ zone_form.name.help_text }}</div>
-                {% for error in zone_form.name.errors %}
+            <div class="wizard-customizable mb-3">
+                <div class="form-check form-switch">
+                    {{ area_form.customizable }}
+                    <label class="form-check-label fw-semibold" for="{{ area_form.customizable.id_for_label }}">
+                        {{ area_form.customizable.label }}
+                    </label>
+                </div>
+                <div class="form-text">{{ area_form.customizable.help_text }}</div>
+                {% for error in area_form.customizable.errors %}
                 <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
             </div>
+            <div class="wizard-fixed-note" data-fixed-note{% if area_form.customizable.value %} hidden{% endif %} role="status">
+                <i class="bi bi-lock-fill" aria-hidden="true"></i>
+                <div>
+                    <strong>Fixed side: customers cannot add artwork here.</strong>
+                    <span>
+                        The mockup is printed exactly as uploaded, so the preview on the
+                        right stays visible for reference but carries no printable area.
+                        Switch <em>Customers can customize this side</em> back on to draw one.
+                    </span>
+                </div>
+            </div>
 
-            <details class="wizard-advanced" {% if zone_form.errors %}open{% endif %}>
+            <details class="wizard-advanced" {% if area_form.errors %}open{% endif %}>
                 <summary>
                     <i class="bi bi-sliders me-2"></i>Advanced area settings
                 </summary>
                 <div class="wizard-advanced-body">
                     <div class="mb-3">
-                        <label class="form-label" for="{{ zone_form.rotation.id_for_label }}">{{ zone_form.rotation.label }}</label>
-                        {{ zone_form.rotation }}
-                        {% for error in zone_form.rotation.errors %}
+                        <label class="form-label" for="{{ area_form.rotation.id_for_label }}">{{ area_form.rotation.label }}</label>
+                        {{ area_form.rotation }}
+                        {% for error in area_form.rotation.errors %}
                         <div class="invalid-feedback d-block">{{ error }}</div>
                         {% endfor %}
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label" for="{{ zone_form.max_file_size_mb.id_for_label }}">{{ zone_form.max_file_size_mb.label }}</label>
-                        {{ zone_form.max_file_size_mb }}
-                        <div class="form-text">{{ zone_form.max_file_size_mb.help_text }}</div>
-                        {% for error in zone_form.max_file_size_mb.errors %}
+                        <label class="form-label" for="{{ area_form.max_file_size_mb.id_for_label }}">{{ area_form.max_file_size_mb.label }}</label>
+                        {{ area_form.max_file_size_mb }}
+                        <div class="form-text">{{ area_form.max_file_size_mb.help_text }}</div>
+                        {% for error in area_form.max_file_size_mb.errors %}
                         <div class="invalid-feedback d-block">{{ error }}</div>
                         {% endfor %}
                     </div>
 
                     <div class="form-check mb-2">
-                        {{ zone_form.allow_rotation }}
-                        <label class="form-check-label" for="{{ zone_form.allow_rotation.id_for_label }}">{{ zone_form.allow_rotation.label }}</label>
+                        {{ area_form.allow_rotation }}
+                        <label class="form-check-label" for="{{ area_form.allow_rotation.id_for_label }}">{{ area_form.allow_rotation.label }}</label>
                     </div>
                     <div class="form-check mb-2">
-                        {{ zone_form.allow_scaling }}
-                        <label class="form-check-label" for="{{ zone_form.allow_scaling.id_for_label }}">{{ zone_form.allow_scaling.label }}</label>
+                        {{ area_form.allow_scaling }}
+                        <label class="form-check-label" for="{{ area_form.allow_scaling.id_for_label }}">{{ area_form.allow_scaling.label }}</label>
                     </div>
                     <div class="form-check">
-                        {{ zone_form.aspect_ratio_locked }}
-                        <label class="form-check-label" for="{{ zone_form.aspect_ratio_locked.id_for_label }}">{{ zone_form.aspect_ratio_locked.label }}</label>
+                        {{ area_form.aspect_ratio_locked }}
+                        <label class="form-check-label" for="{{ area_form.aspect_ratio_locked.id_for_label }}">{{ area_form.aspect_ratio_locked.label }}</label>
                     </div>
                 </div>
             </details>
 
         </div>
 
-        <div class="col-lg-7">
-            <div class="wizard-area-editor">
+        <div class="col-lg-7" data-area-panel>
+            <div class="wizard-area-editor{% if not area_form.customizable.value %} is-fixed{% endif %}" data-area-editor>
                 <div class="wizard-area-toolbar">
                     <div>
-                        <p class="wizard-kicker mb-1">Printable area</p>
+                        <p class="wizard-kicker mb-1" data-area-kicker>
+                            <span data-area-kicker-default{% if not area_form.customizable.value %} hidden{% endif %}>Printable area</span>
+                            <span data-area-kicker-fixed{% if area_form.customizable.value %} hidden{% endif %}>Mockup preview</span>
+                        </p>
                         <p class="wizard-area-mode" data-area-mode>Custom rectangle</p>
                     </div>
-                    <div class="form-check form-switch mb-0">
-                        {{ zone_form.full_face }}
-                        <label class="form-check-label" for="{{ zone_form.full_face.id_for_label }}">
-                            {{ zone_form.full_face.label }}
+                    <div class="form-check form-switch mb-0" data-full-face-switch{% if not area_form.customizable.value %} hidden{% endif %}>
+                        {{ area_form.full_face }}
+                        <label class="form-check-label" for="{{ area_form.full_face.id_for_label }}">
+                            {{ area_form.full_face.label }}
                         </label>
                     </div>
                 </div>
@@ -113,6 +131,13 @@
                     Drag on the mockup to draw, drag inside the rectangle to move, or use the
                     eight handles to resize. Arrow keys move it; hold Shift with the arrow keys
                     to resize it.
+                </p>
+                <p class="wizard-stage-fixed" data-stage-fixed{% if area_form.customizable.value %} hidden{% endif %}>
+                    <i class="bi bi-lock-fill" aria-hidden="true"></i>
+                    <span>
+                        <strong>Preview only.</strong> This side is fixed, so the mockup is shown
+                        for reference and no printable area is used.
+                    </span>
                 </p>
                 <noscript>
                     <p class="wizard-noscript-note">
@@ -125,7 +150,7 @@
                         <img data-mockup-preview alt="" class="wizard-stage-image" hidden>
                         <div class="wizard-stage-placeholder" data-stage-placeholder>
                             <i class="bi bi-cloud-arrow-up"></i>
-                            <span>Upload a mockup to draw its printable area.</span>
+                            <span>Upload a mockup to preview this side.</span>
                         </div>
                         <div class="wizard-stage-hint" data-stage-hint hidden>
                             Drag to draw · Pull a handle to resize
@@ -183,30 +208,30 @@
                 </div>
 
                 <div class="wizard-area-error" data-area-error role="alert"></div>
-                {% if zone_form.non_field_errors %}
+                {% if area_form.non_field_errors %}
                 <div class="alert alert-danger py-2 px-3 mt-3">
-                    {% for error in zone_form.non_field_errors %}{{ error }}{% endfor %}
+                    {% for error in area_form.non_field_errors %}{{ error }}{% endfor %}
                 </div>
                 {% endif %}
-                {% if zone_form.x_ratio.errors or zone_form.y_ratio.errors or zone_form.width_ratio.errors or zone_form.height_ratio.errors or zone_form.full_face.errors %}
+                {% if area_form.x_ratio.errors or area_form.y_ratio.errors or area_form.width_ratio.errors or area_form.height_ratio.errors or area_form.full_face.errors %}
                 <div class="alert alert-danger py-2 px-3 mt-3">
-                    {% for error in zone_form.x_ratio.errors %}<div>{{ error }}</div>{% endfor %}
-                    {% for error in zone_form.y_ratio.errors %}<div>{{ error }}</div>{% endfor %}
-                    {% for error in zone_form.width_ratio.errors %}<div>{{ error }}</div>{% endfor %}
-                    {% for error in zone_form.height_ratio.errors %}<div>{{ error }}</div>{% endfor %}
-                    {% for error in zone_form.full_face.errors %}<div>{{ error }}</div>{% endfor %}
+                    {% for error in area_form.x_ratio.errors %}<div>{{ error }}</div>{% endfor %}
+                    {% for error in area_form.y_ratio.errors %}<div>{{ error }}</div>{% endfor %}
+                    {% for error in area_form.width_ratio.errors %}<div>{{ error }}</div>{% endfor %}
+                    {% for error in area_form.height_ratio.errors %}<div>{{ error }}</div>{% endfor %}
+                    {% for error in area_form.full_face.errors %}<div>{{ error }}</div>{% endfor %}
                 </div>
                 {% endif %}
 
                 <div class="wizard-hidden-fields" aria-hidden="true">
-                    {{ zone_form.x_ratio }}
-                    {{ zone_form.y_ratio }}
-                    {{ zone_form.width_ratio }}
-                    {{ zone_form.height_ratio }}
+                    {{ area_form.x_ratio }}
+                    {{ area_form.y_ratio }}
+                    {{ area_form.width_ratio }}
+                    {{ area_form.height_ratio }}
                 </div>
                 {% if face_index != "__prefix__" %}
                 <noscript>
-                    <input type="hidden" name="{{ zone_form.full_face.html_name }}" value="on">
+                    <input type="hidden" name="{{ area_form.full_face.html_name }}" value="on">
                 </noscript>
                 {% endif %}
             </div>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Home | AuraVisual Ecommerce{% endblock %}
 
@@ -24,27 +25,22 @@
 
                 <div class="home-hero-actions">
                     {% if user.is_authenticated %}
-                        {% if recent_drafts %}
-                        {% with draft=recent_drafts.0 %}
-                        <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}" class="btn-get-started">
-                            <i class="bi bi-pencil-square me-2"></i>Resume a design
+                        {% if latest_draft %}
+                        <a href="{% url 'customization:editor' latest_draft.product.slug %}?draft={{ latest_draft.pk }}" class="btn-get-started">
+                            <i class="bi bi-pencil-square me-2"></i>Continue customizing
                         </a>
-                        {% endwith %}
                         {% else %}
                         <a href="#products" class="btn-get-started">
-                            <i class="bi bi-palette me-2"></i>Start with a product
+                            <i class="bi bi-palette me-2"></i>Start customizing
                         </a>
                         {% endif %}
                     {% else %}
-                        {% if featured_product %}
-                        <a href="{% url 'account_login' %}?next={{ featured_product.get_absolute_url|urlencode }}" class="btn-get-started">
-                            <i class="bi bi-palette me-2"></i>Start a design
-                        </a>
-                        {% else %}
                         <a href="#products" class="btn-get-started">
-                            <i class="bi bi-grid me-2"></i>Browse products
+                            <i class="bi bi-palette me-2"></i>Start customizing
                         </a>
-                        {% endif %}
+                        <a href="{% url 'account_login' %}?next={{ request.get_full_path|urlencode }}" class="btn-home-ghost">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Sign in to start customizing
+                        </a>
                     {% endif %}
                     <a href="#how-it-works" class="btn-home-ghost">
                         <i class="bi bi-play-circle me-2"></i>See how it works
@@ -66,23 +62,27 @@
             <div class="col-lg-5">
                 <div class="home-hero-visual">
                     <div class="home-hero-visual-glow" aria-hidden="true"></div>
-                    {% if featured_product and featured_product.primary_view %}
+                    {% if latest_draft and latest_draft.card_has_visual %}
+                    <span class="home-hero-badge">Your latest project</span>
+                    <div class="tilt-card" data-tilt data-tilt-max="14" data-tilt-speed="600" data-tilt-scale="1.03">
+                        {% include "home/_card_preview.html" with preview_url=latest_draft.card_preview_url preview_layers=latest_draft.card_layers preview_mockup_url=latest_draft.card_mockup_url preview_canvas_width=latest_draft.card_canvas_width preview_canvas_height=latest_draft.card_canvas_height preview_scope="hero" preview_id=latest_draft.pk alt=latest_draft.display_name|add:" project preview" extra_class="home-hero-image" loading="eager" %}
+                    </div>
+                    <a href="{% url 'customization:editor' latest_draft.product.slug %}?draft={{ latest_draft.pk }}" class="btn-home-ghost home-hero-project-link">
+                        <i class="bi bi-pencil-square me-2"></i>Continue customizing
+                    </a>
+                    {% elif featured_product and featured_product.card_has_visual %}
                     <span class="home-hero-badge">Featured product</span>
-                    <img src="{{ featured_product.primary_view.mockup_image.url }}"
-                         alt="{{ featured_product.title }} product mockup"
-                         class="home-hero-image">
-                    <div class="home-hero-product-meta">
-                        <strong>{{ featured_product.title }}</strong>
-                        <span>From &euro; {{ featured_product.base_price }}</span>
+                    <div class="tilt-card" data-tilt data-tilt-max="14" data-tilt-speed="600" data-tilt-scale="1.03">
+                        {% include "home/_card_preview.html" with preview_url=featured_product.card_preview_url preview_layers=featured_product.card_layers preview_mockup_url=featured_product.card_mockup_url preview_canvas_width=featured_product.card_canvas_width preview_canvas_height=featured_product.card_canvas_height preview_scope="hero" preview_id=featured_product.pk alt=featured_product.title|add:" product preview" extra_class="home-hero-image" loading="eager" %}
                     </div>
                     {% else %}
                     <div class="home-hero-placeholder">
                         <i class="bi bi-credit-card-2-front" aria-hidden="true"></i>
-                        <p class="mb-1">Your product preview appears here.</p>
+                        <p class="mb-1">Design it once. See it instantly.</p>
                         {% if user.is_staff %}
                         <span>Add a product with a mockup to bring the catalogue to life.</span>
                         {% else %}
-                        <span>New customizable products are on the way. Check back soon.</span>
+                        <span>Pick a product below and your live preview appears right here.</span>
                         {% endif %}
                     </div>
                     {% endif %}
@@ -99,7 +99,7 @@
             <div>
                 <p class="home-eyebrow">Your workspace</p>
                 <h2>Pick up where you left off</h2>
-                <p>Your latest saved designs and the products from your most recent order.</p>
+                <p>Your last projects and the products from your most recent order.</p>
             </div>
             <a href="{% url 'customization:list' %}" class="home-text-link">
                 All saved designs<i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
@@ -110,26 +110,36 @@
         <div class="home-project-grid">
             {% for draft in recent_drafts %}
             <article class="home-project-card">
-                <div class="home-project-preview">
-                    {% if draft.preview_url %}
-                    <img src="{{ draft.preview_url }}" alt="Saved preview for {{ draft.product.title }}" loading="lazy">
-                    {% else %}
-                    <div class="home-project-placeholder">
-                        <i class="bi bi-image" aria-hidden="true"></i>
-                        <span>Preview not generated</span>
+                <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}"
+                   class="home-project-tilt tilt-card"
+                   data-tilt data-tilt-max="12" data-tilt-speed="600" data-tilt-scale="1.03"
+                   aria-label="Continue editing {{ draft.display_name }}">
+                    <div class="home-project-preview">
+                        {% if draft.card_has_visual %}
+                        {% include "home/_card_preview.html" with preview_url=draft.card_preview_url preview_layers=draft.card_layers preview_mockup_url=draft.card_mockup_url preview_canvas_width=draft.card_canvas_width preview_canvas_height=draft.card_canvas_height preview_scope="draft" preview_id=draft.pk alt=draft.product.title|add:" saved design preview" %}
+                        {% else %}
+                        <div class="home-project-placeholder">
+                            <i class="bi bi-image" aria-hidden="true"></i>
+                            <span>Preview not generated</span>
+                        </div>
+                        {% endif %}
                     </div>
-                    {% endif %}
-                </div>
+                </a>
                 <div class="home-project-body">
-                    <p class="home-project-kicker">Saved design</p>
-                    <h3>{{ draft.product.title }}</h3>
-                    <p class="home-project-date">Updated {{ draft.updated_at|date:"M j, Y, H:i" }}</p>
+                    <p class="home-project-kicker">{{ draft.product.title }}</p>
+                    <h3>
+                        <a href="{% url 'customization:draft_detail' draft.pk %}" aria-label="Open {{ draft.display_name }}">{{ draft.display_name }}</a>
+                    </h3>
+                    <p class="home-project-meta">
+                        <span class="home-project-price">&euro; {{ draft.product.base_price }}</span>
+                        <span class="home-project-date">{{ draft.updated_at|date:"M j, Y" }}</span>
+                    </p>
                     <div class="home-project-actions">
-                        <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}" class="btn-get-started">
-                            <i class="bi bi-pencil-square me-2"></i>Continue editing
+                        <a href="{% url 'customization:editor' draft.product.slug %}?draft={{ draft.pk }}" class="btn-get-started" aria-label="Continue editing {{ draft.display_name }}">
+                            <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Edit
                         </a>
-                        <a href="{% url 'customization:draft_detail' draft.pk %}" class="btn btn-outline-secondary">
-                            <i class="bi bi-eye me-2"></i>View
+                        <a href="{% url 'customization:draft_detail' draft.pk %}" class="btn btn-outline-secondary" aria-label="View {{ draft.display_name }}">
+                            <i class="bi bi-eye" aria-hidden="true"></i>
                         </a>
                     </div>
                 </div>
@@ -139,11 +149,11 @@
         {% else %}
         <div class="home-empty-panel">
             <div>
-                <h3>No saved designs yet</h3>
-                <p>Start from the catalogue below. Your draft will appear here after you save it.</p>
+                <h3>No projects yet</h3>
+                <p>Design it once. See it instantly. Start from the catalogue below and your first project lands here.</p>
             </div>
             <a href="#products" class="btn-get-started">
-                <i class="bi bi-grid me-2"></i>Browse products
+                <i class="bi bi-palette me-2"></i>Start customizing
             </a>
         </div>
         {% endif %}
@@ -180,7 +190,7 @@
             <div>
                 <p class="home-eyebrow">The catalogue</p>
                 <h2>Choose your starting point</h2>
-                <p>NFC cards, QR stands and physical products you can personalise before checkout.</p>
+                <p>The newest NFC cards, QR stands and customizable products, ready to personalise before checkout.</p>
             </div>
             <div class="home-section-actions">
                 {% if user.is_staff %}
@@ -197,12 +207,10 @@
         {% if products %}
         <div class="home-product-grid">
             {% for product in products %}
-            <article class="home-product-card">
+            <article class="home-product-card tilt-card" data-tilt data-tilt-max="10" data-tilt-speed="600" data-tilt-scale="1.02">
                 <div class="home-product-media">
-                    {% if product.primary_view %}
-                    <img src="{{ product.primary_view.mockup_image.url }}"
-                         alt="{{ product.title }} product mockup"
-                         loading="lazy">
+                    {% if product.card_has_visual %}
+                    {% include "home/_card_preview.html" with preview_url=product.card_preview_url preview_layers=product.card_layers preview_mockup_url=product.card_mockup_url preview_canvas_width=product.card_canvas_width preview_canvas_height=product.card_canvas_height preview_scope="product" preview_id=product.pk alt=product.title|add:" product preview" %}
                     {% else %}
                     <div class="home-product-placeholder">
                         <i class="bi bi-credit-card-2-front" aria-hidden="true"></i>
@@ -227,7 +235,11 @@
                         </span>
                     </div>
                     <div class="home-product-actions">
-                        {% if user.is_authenticated %}
+                        {% if not product.has_customizable_sides %}
+                        <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-box-seam me-2"></i>View in catalogue
+                        </a>
+                        {% elif user.is_authenticated %}
                         <a href="{{ product.get_absolute_url }}" class="btn-get-started">
                             <i class="bi bi-palette me-2"></i>Customize
                         </a>
@@ -240,6 +252,12 @@
                 </div>
             </article>
             {% endfor %}
+        </div>
+        <div class="home-catalogue-more">
+            <a href="{% url 'products:list' %}" class="btn-get-started">
+                <i class="bi bi-grid me-2" aria-hidden="true"></i>Browse the full catalogue
+            </a>
+            <p class="home-catalogue-note">Showing the {{ products|length }} newest {{ products|length|pluralize:"product,products" }}. The full catalogue lists them all.</p>
         </div>
         {% else %}
         <div class="home-empty-panel">
@@ -375,4 +393,9 @@
         </div>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.8.1/dist/vanilla-tilt.min.js" defer></script>
+<script src="{% static 'js/card-tilt.js' %}?v={{ ASSET_VERSION }}" defer></script>
 {% endblock %}

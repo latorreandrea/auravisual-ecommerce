@@ -10,7 +10,7 @@
     const data = JSON.parse(dataNode.textContent);
     const stage = document.getElementById("editor-stage");
     const mockup = document.getElementById("editor-mockup");
-    const zonesLayer = document.getElementById("editor-zones");
+    const artworkLayer = document.getElementById("editor-artwork");
     const tabs = document.getElementById("editor-view-tabs");
     const fileInputs = document.getElementById("editor-file-inputs");
     const configurationInput = document.getElementById("configuration-input");
@@ -20,10 +20,13 @@
     const scaleValue = document.getElementById("editor-scale-value");
     const rotationInput = document.getElementById("editor-rotation");
     const rotationValue = document.getElementById("editor-rotation-value");
-    const zoneName = document.getElementById("editor-zone-name");
+    const rotationRow = document.getElementById("editor-rotation-row");
+    const sideName = document.getElementById("editor-side-name");
     const controls = document.getElementById("editor-controls");
     const errorBox = document.getElementById("editor-error");
     const saveButton = document.getElementById("editor-save");
+
+    const MAX_SCALE = 2;
 
     const canReattachFiles = (() => {
         try {
@@ -36,45 +39,36 @@
         }
     })();
 
+    // One image per side: the state mirrors what the server will store.
     const state = {
         views: data.views.map((view) => ({
             ...view,
-            zones: view.zones.map((zone) => ({
-                ...zone,
-                file: null,
-                previewUrl: "",
-                assetPath: "",
-                assetUrl: "",
-                originalName: "",
-                naturalWidth: 0,
-                naturalHeight: 0,
-                fit: null,
-                transform: null,
-            })),
+            file: null,
+            previewUrl: "",
+            assetPath: "",
+            assetUrl: "",
+            originalName: "",
+            naturalWidth: 0,
+            naturalHeight: 0,
+            fit: null,
+            transform: null,
         })),
         activeViewId: null,
-        activeZoneId: null,
         canvasWidth: 0,
         canvasHeight: 0,
     };
 
-    Object.entries(data.existing || {}).forEach(([viewId, zones]) => {
+    Object.entries(data.existing || {}).forEach(([viewId, stored]) => {
         const view = state.views.find((candidate) => String(candidate.id) === String(viewId));
-        if (!view) {
+        if (!view || !stored) {
             return;
         }
-        Object.entries(zones).forEach(([zoneId, stored]) => {
-            const zone = view.zones.find((candidate) => String(candidate.id) === String(zoneId));
-            if (!zone) {
-                return;
-            }
-            zone.assetPath = stored.asset_path || "";
-            zone.assetUrl = stored.asset_url || "";
-            zone.originalName = stored.original_name || "";
-            zone.naturalWidth = stored.natural_width || 0;
-            zone.naturalHeight = stored.natural_height || 0;
-            zone.transform = stored.transform || null;
-        });
+        view.assetPath = stored.asset_path || "";
+        view.assetUrl = stored.asset_url || "";
+        view.originalName = stored.original_name || "";
+        view.naturalWidth = stored.natural_width || 0;
+        view.naturalHeight = stored.natural_height || 0;
+        view.transform = stored.transform || null;
     });
 
     function formatBytes(bytes) {
@@ -95,47 +89,19 @@
     }
 
     function currentView() {
-        return state.views.find((view) => view.id === state.activeViewId) || state.views[0];
+        return (
+            state.views.find((view) => view.id === state.activeViewId) ||
+            state.views[0] ||
+            null
+        );
     }
 
-    function currentZone() {
-        const view = currentView();
-        if (!view) {
-            return null;
-        }
-        return view.zones.find((zone) => zone.id === state.activeZoneId) || null;
-    }
-
-    function fitDimensions(naturalWidth, naturalHeight, zone) {
-        if (!naturalWidth || !naturalHeight) {
-            return { width: zone.width, height: zone.height };
-        }
-        const ratio = Math.min(zone.width / naturalWidth, zone.height / naturalHeight, 1);
-        return {
-            width: Math.max(1, naturalWidth * ratio),
-            height: Math.max(1, naturalHeight * ratio),
-        };
-    }
-
-    function syncStageRatio() {
-        if (!stage || !state.canvasWidth || !state.canvasHeight) {
-            return;
-        }
-        // Match the mockup to the editable canvas aspect ratio. The server
-        // renderer uses the same width/height, so percentage based zone
-        // coordinates line up in the editor and in the generated files.
-        stage.style.aspectRatio = `${state.canvasWidth} / ${state.canvasHeight}`;
+    function hasImage(view) {
+        return Boolean(view && (view.previewUrl || view.assetUrl));
     }
 
     function clamp(value, minimum, maximum) {
         return Math.min(Math.max(value, minimum), maximum);
-    }
-
-    function defaultRotation(zone) {
-        if (!zone.allow_rotation) {
-            return 0;
-        }
-        return clamp(finiteNumber(zone.rotation, 0), -180, 180);
     }
 
     function finiteNumber(value, fallback) {
@@ -149,67 +115,107 @@
         return fallback;
     }
 
-    function normalizeTransform(zone, transform) {
-        const width = clamp(finiteNumber(transform.width, zone.width), 1, zone.width);
-        let height = clamp(finiteNumber(transform.height, zone.height), 1, zone.height);
+    // The image never starts bigger than its printable area.
+    function fitDimensions(view, naturalWidth, naturalHeight) {
+        const box = view.print_area;
+        if (!naturalWidth || !naturalHeight) {
+            return { width: box.width, height: box.height };
+        }
+        const ratio = Math.min(box.width / naturalWidth, box.height / naturalHeight, 1);
+        return {
+            width: Math.max(1, naturalWidth * ratio),
+            height: Math.max(1, naturalHeight * ratio),
+        };
+    }
 
-        if (zone.aspect_ratio_locked || !zone.allow_scaling) {
-            const base = zone.fit || fitDimensions(zone.naturalWidth, zone.naturalHeight, zone);
-            const ratio = base.width / base.height;
+    function defaultRotation(view) {
+        if (!view.print_area.allow_rotation) {
+            return 0;
+        }
+        return clamp(finiteNumber(view.print_area.rotation, 0), -180, 180);
+    }
+
+    function normalizeTransform(view, transform) {
+        const box = view.print_area;
+        const maxWidth = box.width * MAX_SCALE;
+        const maxHeight = box.height * MAX_SCALE;
+
+        let width = clamp(finiteNumber(transform.width, box.width), 1, maxWidth);
+        let height = clamp(finiteNumber(transform.height, box.height), 1, maxHeight);
+
+        if (!box.allow_scaling) {
+            const fit = fitDimensions(view, view.naturalWidth, view.naturalHeight);
+            width = fit.width;
+            height = fit.height;
+        } else if (box.aspect_ratio_locked) {
+            const fit = fitDimensions(view, view.naturalWidth, view.naturalHeight);
+            const ratio = fit.height ? fit.width / fit.height : 1;
             height = width / ratio;
-            if (height > zone.height) {
-                height = zone.height;
-                return normalizeTransform(zone, { ...transform, width: height * ratio, height });
+            if (height > maxHeight) {
+                height = maxHeight;
+                width = height * ratio;
             }
         }
 
+        // Keep the centre of the image inside the printable area.
+        const desiredCenterX = finiteNumber(
+            transform.x,
+            box.x + (box.width - width) / 2
+        ) + width / 2;
+        const desiredCenterY = finiteNumber(
+            transform.y,
+            box.y + (box.height - height) / 2
+        ) + height / 2;
+        const centerX = clamp(desiredCenterX, box.x, box.x + box.width);
+        const centerY = clamp(desiredCenterY, box.y, box.y + box.height);
+
         return {
-            x: clamp(finiteNumber(transform.x, zone.x), zone.x, zone.x + zone.width - width),
-            y: clamp(finiteNumber(transform.y, zone.y), zone.y, zone.y + zone.height - height),
+            x: centerX - width / 2,
+            y: centerY - height / 2,
             width,
             height,
-            rotation: zone.allow_rotation
+            rotation: box.allow_rotation
                 ? clamp(finiteNumber(transform.rotation, 0), -180, 180)
                 : 0,
         };
     }
 
-    function ensureTransform(zone) {
-        if (!zone.fit && zone.naturalWidth && zone.naturalHeight) {
-            zone.fit = fitDimensions(zone.naturalWidth, zone.naturalHeight, zone);
-        }
-        if (!zone.transform) {
-            const fit = zone.fit || { width: zone.width, height: zone.height };
-            zone.transform = {
-                x: zone.x + (zone.width - fit.width) / 2,
-                y: zone.y + (zone.height - fit.height) / 2,
+    function ensureTransform(view) {
+        if (!view.transform) {
+            const box = view.print_area;
+            const fit = fitDimensions(view, view.naturalWidth, view.naturalHeight);
+            view.fit = fit;
+            view.transform = {
+                x: box.x + (box.width - fit.width) / 2,
+                y: box.y + (box.height - fit.height) / 2,
                 width: fit.width,
                 height: fit.height,
-                rotation: defaultRotation(zone),
+                rotation: defaultRotation(view),
             };
         }
-        zone.transform = normalizeTransform(zone, zone.transform);
-        return zone.transform;
+        view.transform = normalizeTransform(view, view.transform);
+        return view.transform;
     }
 
     function percent(value, total) {
         return `${(value / total) * 100}%`;
     }
 
-    function applyTransformToImage(zone) {
-        const image = zonesLayer.querySelector(`[data-zone-image="${zone.id}"]`);
+    function applyTransformToImage(view) {
+        const image = artworkLayer.querySelector("[data-artwork-image]");
         if (!image) {
             return;
         }
-        const transform = ensureTransform(zone);
-        image.style.left = percent(transform.x - zone.x, zone.width);
-        image.style.top = percent(transform.y - zone.y, zone.height);
-        image.style.width = percent(transform.width, zone.width);
-        image.style.height = percent(transform.height, zone.height);
+        const box = view.print_area;
+        const transform = ensureTransform(view);
+        image.style.left = percent(transform.x - box.x, box.width);
+        image.style.top = percent(transform.y - box.y, box.height);
+        image.style.width = percent(transform.width, box.width);
+        image.style.height = percent(transform.height, box.height);
         image.style.transform = `rotate(${transform.rotation}deg)`;
     }
 
-    function attachDrag(image, zone) {
+    function attachDrag(image, view) {
         let start = null;
         let moved = false;
 
@@ -218,18 +224,9 @@
                 return;
             }
             event.preventDefault();
-            ensureTransform(zone);
-            start = {
-                x: event.clientX,
-                y: event.clientY,
-                transform: { ...zone.transform },
-            };
+            const transform = ensureTransform(view);
+            start = { x: event.clientX, y: event.clientY, transform: { ...transform } };
             moved = false;
-            state.activeZoneId = zone.id;
-            zonesLayer.querySelectorAll(".editor-zone-clip").forEach((clip) => {
-                clip.classList.toggle("is-selected", clip.contains(image));
-            });
-            updateSidebar();
 
             image.setPointerCapture(event.pointerId);
             image.dataset.dragging = "0";
@@ -242,9 +239,8 @@
             if (!start) {
                 return;
             }
-            const view = currentView();
             const rect = stage.getBoundingClientRect();
-            if (!view || !rect.width || !rect.height) {
+            if (!rect.width || !rect.height) {
                 return;
             }
             const factorX = view.canvas_width / rect.width;
@@ -254,12 +250,12 @@
             if (Math.abs(deltaX) + Math.abs(deltaY) > 2) {
                 moved = true;
             }
-            zone.transform = normalizeTransform(zone, {
+            view.transform = normalizeTransform(view, {
                 ...start.transform,
                 x: start.transform.x + deltaX,
                 y: start.transform.y + deltaY,
             });
-            applyTransformToImage(zone);
+            applyTransformToImage(view);
         }
 
         function onUp(event) {
@@ -275,22 +271,15 @@
                 }, 0);
             }
             start = null;
-            updateSidebar();
         }
     }
 
-    function selectZone(zoneId, openPicker = false) {
-        state.activeZoneId = zoneId;
+    function selectView(viewId, openPicker = false) {
+        state.activeViewId = viewId;
         renderStage();
         updateSidebar();
         if (openPicker) {
-            const input = fileInputs.querySelector(`input[data-zone-input="${zoneId}"]`);
-            if (input) {
-                if (canReattachFiles) {
-                    input.value = "";
-                }
-                input.click();
-            }
+            openPickerFor(viewId);
         }
     }
 
@@ -302,14 +291,13 @@
             button.className = "editor-view-tab";
             button.textContent = view.name;
             button.setAttribute("role", "tab");
-            button.setAttribute("aria-selected", view.id === state.activeViewId ? "true" : "false");
+            button.setAttribute(
+                "aria-selected",
+                view.id === state.activeViewId ? "true" : "false"
+            );
             button.classList.toggle("is-active", view.id === state.activeViewId);
-            button.addEventListener("click", () => {
-                state.activeViewId = view.id;
-                state.activeZoneId = null;
-                renderStage();
-                updateSidebar();
-            });
+            button.classList.toggle("has-image", hasImage(view));
+            button.addEventListener("click", () => selectView(view.id));
             tabs.appendChild(button);
         });
     }
@@ -322,137 +310,138 @@
         state.activeViewId = view.id;
         state.canvasWidth = Number(view.canvas_width) || 0;
         state.canvasHeight = Number(view.canvas_height) || 0;
-        syncStageRatio();
+
+        if (state.canvasWidth && state.canvasHeight) {
+            // Same aspect ratio the server renderer uses, so percentage based
+            // coordinates line up in the editor and in the generated files.
+            stage.style.aspectRatio = `${state.canvasWidth} / ${state.canvasHeight}`;
+        }
 
         mockup.src = view.mockup_url;
         mockup.alt = `${data.product.title} - ${view.name}`;
 
-        zonesLayer.innerHTML = "";
-        view.zones.forEach((zone) => {
-            const clip = document.createElement("div");
-            clip.className = "editor-zone-clip";
-            clip.style.left = percent(zone.x, view.canvas_width);
-            clip.style.top = percent(zone.y, view.canvas_height);
-            clip.style.width = percent(zone.width, view.canvas_width);
-            clip.style.height = percent(zone.height, view.canvas_height);
-            clip.title = `${zone.name} - ${formatBytes(zone.max_upload_bytes)} max`;
-            clip.classList.toggle("is-selected", zone.id === state.activeZoneId);
+        artworkLayer.innerHTML = "";
+        const box = view.print_area;
+        const area = document.createElement("div");
+        area.className = "editor-print-area";
+        area.style.left = percent(box.x, view.canvas_width);
+        area.style.top = percent(box.y, view.canvas_height);
+        area.style.width = percent(box.width, view.canvas_width);
+        area.style.height = percent(box.height, view.canvas_height);
+        area.title = `${view.name} - printable area`;
 
-            const hasImage = Boolean(zone.previewUrl || zone.assetUrl);
-            if (hasImage) {
-                const transform = ensureTransform(zone);
-                const image = document.createElement("img");
-                image.className = "editor-zone-image";
-                image.dataset.zoneImage = zone.id;
-                image.src = zone.previewUrl || zone.assetUrl;
-                image.alt = zone.originalName || `${zone.name} artwork`;
-                image.draggable = false;
-                image.style.left = percent(transform.x - zone.x, zone.width);
-                image.style.top = percent(transform.y - zone.y, zone.height);
-                image.style.width = percent(transform.width, zone.width);
-                image.style.height = percent(transform.height, zone.height);
-                image.style.transform = `rotate(${transform.rotation}deg)`;
-                clip.appendChild(image);
-                attachDrag(image, zone);
-            } else {
-                const hint = document.createElement("span");
-                hint.className = "editor-zone-hint";
-                hint.textContent = "+";
-                hint.setAttribute("aria-hidden", "true");
-                clip.appendChild(hint);
+        if (hasImage(view)) {
+            const transform = ensureTransform(view);
+            const image = document.createElement("img");
+            image.className = "editor-artwork-image";
+            image.dataset.artworkImage = "1";
+            image.src = view.previewUrl || view.assetUrl;
+            image.alt = view.originalName || `${view.name} artwork`;
+            image.draggable = false;
+            image.style.left = percent(transform.x - box.x, box.width);
+            image.style.top = percent(transform.y - box.y, box.height);
+            image.style.width = percent(transform.width, box.width);
+            image.style.height = percent(transform.height, box.height);
+            image.style.transform = `rotate(${transform.rotation}deg)`;
+            area.appendChild(image);
+            attachDrag(image, view);
+        } else {
+            const hint = document.createElement("span");
+            hint.className = "editor-artwork-hint";
+            hint.textContent = "+";
+            hint.setAttribute("aria-hidden", "true");
+            area.appendChild(hint);
+        }
+
+        area.addEventListener("click", (event) => {
+            if (event.target.dataset && event.target.dataset.dragging === "1") {
+                return;
             }
-
-            clip.addEventListener("click", (event) => {
-                if (event.target.dataset && event.target.dataset.dragging === "1") {
-                    return;
-                }
-                selectZone(zone.id, !hasImage);
-            });
-            zonesLayer.appendChild(clip);
+            selectView(view.id, !hasImage(view));
         });
+        artworkLayer.appendChild(area);
 
         renderTabs();
     }
 
     function updateSidebar() {
-        const zone = currentZone();
         const view = currentView();
-        if (!zone || !view) {
-            zoneName.textContent = "Select an area on the product.";
+        if (!view) {
+            sideName.textContent = "Select a side.";
             uploadButton.disabled = true;
-            uploadButton.innerHTML = '<i class="bi bi-upload me-2"></i>Choose image';
             controls.classList.add("d-none");
             return;
         }
 
-        const hasImage = Boolean(zone.previewUrl || zone.assetUrl);
-        zoneName.textContent = `${zone.name} (${view.name})`;
+        const filled = hasImage(view);
+        sideName.textContent = `${view.name} - printable area ${formatBytes(view.max_upload_bytes)} max`;
         uploadButton.disabled = false;
-        uploadButton.innerHTML = hasImage
+        uploadButton.innerHTML = filled
             ? '<i class="bi bi-arrow-repeat me-2"></i>Replace image'
             : '<i class="bi bi-upload me-2"></i>Choose image';
-        controls.classList.toggle("d-none", !hasImage);
+        controls.classList.toggle("d-none", !filled);
+        rotationRow.classList.toggle("d-none", !view.print_area.allow_rotation);
 
-        const scaleRow = document.getElementById("editor-scale-row");
-        if (scaleRow) {
-            scaleRow.classList.toggle("d-none", !zone.allow_scaling);
-        }
-        const rotationRow = document.getElementById("editor-rotation-row");
-        if (rotationRow) {
-            rotationRow.classList.toggle("d-none", !zone.allow_rotation);
+        if (!filled) {
+            return;
         }
 
-        if (hasImage) {
-            const transform = ensureTransform(zone);
-            const reference = zone.fit || fitDimensions(zone.naturalWidth, zone.naturalHeight, zone);
-            const scalePercent = reference.width
-                ? clamp(Math.round((transform.width / reference.width) * 100), 25, 100)
-                : 100;
-            scaleInput.value = String(scalePercent);
-            scaleValue.textContent = `${scalePercent}%`;
-            rotationInput.value = String(Math.round(transform.rotation));
-            rotationValue.textContent = `${Math.round(transform.rotation)}\u00b0`;
-        }
+        const transform = ensureTransform(view);
+        const fit = view.fit || fitDimensions(view, view.naturalWidth, view.naturalHeight);
+        const scalePercent = fit.width
+            ? clamp(Math.round((transform.width / fit.width) * 100), 25, MAX_SCALE * 100)
+            : 100;
+        scaleInput.value = String(scalePercent);
+        scaleValue.textContent = `${scalePercent}%`;
+        rotationInput.value = String(Math.round(transform.rotation));
+        rotationValue.textContent = `${Math.round(transform.rotation)}\u00b0`;
     }
 
-    function zoneInput(zoneId) {
-        return fileInputs.querySelector(`input[data-zone-input="${zoneId}"]`);
+    function viewInput(viewId) {
+        return fileInputs.querySelector(`input[data-view-input="${viewId}"]`);
     }
 
-    function syncZoneFiles() {
+    function openPickerFor(viewId) {
+        const input = viewInput(viewId);
+        if (!input) {
+            return;
+        }
+        if (canReattachFiles) {
+            input.value = "";
+        }
+        input.click();
+    }
+
+    function syncFiles() {
         let ok = true;
         state.views.forEach((view) => {
-            view.zones.forEach((zone) => {
-                if (!zone.file) {
-                    return;
-                }
-                const input = zoneInput(zone.id);
-                if (!input) {
-                    ok = false;
-                    return;
-                }
-                if (canReattachFiles) {
-                    try {
-                        const transfer = new DataTransfer();
-                        transfer.items.add(zone.file);
-                        input.files = transfer.files;
-                    } catch (error) {
-                        ok = false;
-                    }
-                }
-                if (canReattachFiles) {
-                    if (!input.files || !input.files.length) {
-                        ok = false;
-                    }
-                } else if (!input.files || input.files[0] !== zone.file) {
+            if (!view.file) {
+                return;
+            }
+            const input = viewInput(view.id);
+            if (!input) {
+                ok = false;
+                return;
+            }
+            if (canReattachFiles) {
+                try {
+                    const transfer = new DataTransfer();
+                    transfer.items.add(view.file);
+                    input.files = transfer.files;
+                } catch (error) {
                     ok = false;
                 }
-            });
+                if (!input.files || !input.files.length) {
+                    ok = false;
+                }
+            } else if (!input.files || input.files[0] !== view.file) {
+                ok = false;
+            }
         });
         return ok;
     }
 
-    function onFileSelected(zone, input) {
+    function onFileSelected(view, input) {
         clearError();
         const file = input.files && input.files[0];
         if (!file) {
@@ -469,9 +458,11 @@
             input.value = "";
             return;
         }
-        if (file.size > zone.max_upload_bytes) {
+        if (file.size > view.max_upload_bytes) {
             showError(
-                `"${file.name}" is too large. The maximum for this area is ${formatBytes(zone.max_upload_bytes)}.`
+                `"${file.name}" is too large. The maximum for this side is ${formatBytes(
+                    view.max_upload_bytes
+                )}.`
             );
             input.value = "";
             return;
@@ -479,10 +470,10 @@
 
         const objectUrl = URL.createObjectURL(file);
         const image = new Image();
-        const requestId = (zone.uploadRequestId || 0) + 1;
-        zone.uploadRequestId = requestId;
+        const requestId = (view.uploadRequestId || 0) + 1;
+        view.uploadRequestId = requestId;
         image.onload = () => {
-            if (zone.uploadRequestId !== requestId) {
+            if (view.uploadRequestId !== requestId) {
                 URL.revokeObjectURL(objectUrl);
                 return;
             }
@@ -493,38 +484,38 @@
                 return;
             }
 
-            if (zone.previewUrl) {
-                URL.revokeObjectURL(zone.previewUrl);
+            if (view.previewUrl) {
+                URL.revokeObjectURL(view.previewUrl);
             }
-            zone.file = file;
-            zone.previewUrl = objectUrl;
-            zone.assetPath = "";
-            zone.assetUrl = "";
-            zone.originalName = file.name;
-            zone.naturalWidth = image.naturalWidth;
-            zone.naturalHeight = image.naturalHeight;
-            zone.fit = fitDimensions(image.naturalWidth, image.naturalHeight, zone);
-            zone.transform = normalizeTransform(zone, {
-                x: zone.x + (zone.width - zone.fit.width) / 2,
-                y: zone.y + (zone.height - zone.fit.height) / 2,
-                width: zone.fit.width,
-                height: zone.fit.height,
-                rotation: defaultRotation(zone),
-            });
-            // Keep the File on the zone state. The native input can be cleared
+            const box = view.print_area;
+            view.file = file;
+            view.previewUrl = objectUrl;
+            view.assetPath = "";
+            view.assetUrl = "";
+            view.originalName = file.name;
+            view.naturalWidth = image.naturalWidth;
+            view.naturalHeight = image.naturalHeight;
+            view.fit = fitDimensions(view, image.naturalWidth, image.naturalHeight);
+            view.transform = {
+                x: box.x + (box.width - view.fit.width) / 2,
+                y: box.y + (box.height - view.fit.height) / 2,
+                width: view.fit.width,
+                height: view.fit.height,
+                rotation: defaultRotation(view),
+            };
+            // Keep the File on the view state. The native input can be cleared
             // so the same path can be picked again, then populated from state
             // immediately before submission.
             if (canReattachFiles) {
                 input.value = "";
             }
-
-            state.activeZoneId = zone.id;
+            state.activeViewId = view.id;
             renderStage();
             updateSidebar();
         };
         image.onerror = () => {
             URL.revokeObjectURL(objectUrl);
-            if (zone.uploadRequestId !== requestId) {
+            if (view.uploadRequestId !== requestId) {
                 return;
             }
             showError("The selected file is not a readable image.");
@@ -534,24 +525,24 @@
     }
 
     function removeImage() {
-        const zone = currentZone();
-        if (!zone) {
+        const view = currentView();
+        if (!view) {
             return;
         }
-        if (zone.previewUrl) {
-            URL.revokeObjectURL(zone.previewUrl);
+        if (view.previewUrl) {
+            URL.revokeObjectURL(view.previewUrl);
         }
-        zone.file = null;
-        zone.uploadRequestId = (zone.uploadRequestId || 0) + 1;
-        zone.previewUrl = "";
-        zone.assetPath = "";
-        zone.assetUrl = "";
-        zone.originalName = "";
-        zone.naturalWidth = 0;
-        zone.naturalHeight = 0;
-        zone.fit = null;
-        zone.transform = null;
-        const input = zoneInput(zone.id);
+        view.file = null;
+        view.uploadRequestId = (view.uploadRequestId || 0) + 1;
+        view.previewUrl = "";
+        view.assetPath = "";
+        view.assetUrl = "";
+        view.originalName = "";
+        view.naturalWidth = 0;
+        view.naturalHeight = 0;
+        view.fit = null;
+        view.transform = null;
+        const input = viewInput(view.id);
         if (input) {
             input.value = "";
         }
@@ -561,79 +552,63 @@
     }
 
     uploadButton.addEventListener("click", () => {
-        const zone = currentZone();
-        if (!zone) {
-            return;
-        }
-        const input = zoneInput(zone.id);
-        if (input) {
-            if (canReattachFiles) {
-                input.value = "";
-            }
-            input.click();
+        const view = currentView();
+        if (view) {
+            openPickerFor(view.id);
         }
     });
 
     removeButton.addEventListener("click", removeImage);
 
     scaleInput.addEventListener("input", () => {
-        const zone = currentZone();
-        if (!zone || !zone.fit) {
+        const view = currentView();
+        if (!view || !hasImage(view)) {
             return;
         }
+        const box = view.print_area;
         const percentage = Number(scaleInput.value);
-        const transform = ensureTransform(zone);
-        const centerX = transform.x + transform.width / 2;
-        const centerY = transform.y + transform.height / 2;
-        const width = clamp(zone.fit.width * (percentage / 100), 1, zone.width);
-        const height = clamp(zone.fit.height * (percentage / 100), 1, zone.height);
-        zone.transform = normalizeTransform(zone, {
-            ...transform,
-            width,
-            height,
-            x: centerX - width / 2,
-            y: centerY - height / 2,
-        });
-        applyTransformToImage(zone);
+        const fit = view.fit || fitDimensions(view, view.naturalWidth, view.naturalHeight);
+        const transform = ensureTransform(view);
+        const width = clamp(fit.width * (percentage / 100), 1, box.width * MAX_SCALE);
+        const height = clamp(fit.height * (percentage / 100), 1, box.height * MAX_SCALE);
+        view.transform = normalizeTransform(view, { ...transform, width, height });
+        applyTransformToImage(view);
         scaleValue.textContent = `${percentage}%`;
     });
 
     rotationInput.addEventListener("input", () => {
-        const zone = currentZone();
-        if (!zone || !zone.allow_rotation) {
+        const view = currentView();
+        if (!view || !hasImage(view) || !view.print_area.allow_rotation) {
             return;
         }
         const rotation = Number(rotationInput.value);
-        zone.transform = normalizeTransform(zone, {
-            ...ensureTransform(zone),
+        view.transform = normalizeTransform(view, {
+            ...ensureTransform(view),
             rotation,
         });
-        applyTransformToImage(zone);
+        applyTransformToImage(view);
         rotationValue.textContent = `${rotation}\u00b0`;
     });
 
     form.addEventListener("submit", (event) => {
         const views = state.views
+            .filter((view) => view.file || view.assetPath)
             .map((view) => ({
                 product_view_id: view.id,
-                zones: view.zones
-                    .filter((zone) => zone.file || zone.assetPath)
-                    .map((zone) => ({
-                        zone_id: zone.id,
-                        asset_path: zone.file ? "" : zone.assetPath,
-                        original_name: zone.originalName,
-                        transform: ensureTransform(zone),
-                    })),
-            }))
-            .filter((view) => view.zones.length);
+                image: {
+                    asset_path: view.file ? "" : view.assetPath,
+                    original_name: view.originalName,
+                    transform: ensureTransform(view),
+                },
+            }));
 
         if (!views.length) {
             event.preventDefault();
-            showError("Add at least one image before saving your customization.");
+            showError("Add at least one image before saving your project.");
             return;
         }
 
-        if (!syncZoneFiles()) {
+        if (!syncFiles()) {
             event.preventDefault();
             showError("The selected image could not be attached. Please choose it again.");
             return;
@@ -645,24 +620,19 @@
             '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Saving...';
     });
 
+    // One hidden file input per customizable side.
     state.views.forEach((view) => {
-        view.zones.forEach((zone) => {
-            const input = document.createElement("input");
-            input.type = "file";
-            input.name = `asset_${zone.id}`;
-            input.accept = "image/png,image/jpeg,image/webp";
-            input.dataset.zoneInput = zone.id;
-            input.addEventListener("change", () => onFileSelected(zone, input));
-            fileInputs.appendChild(input);
-        });
+        const input = document.createElement("input");
+        input.type = "file";
+        input.name = `asset_${view.id}`;
+        input.accept = "image/png,image/jpeg,image/webp";
+        input.dataset.viewInput = view.id;
+        input.addEventListener("change", () => onFileSelected(view, input));
+        fileInputs.appendChild(input);
     });
 
-    const initialView =
-        state.views.find((view) => view.zones.some((zone) => zone.assetPath)) || state.views[0];
+    const initialView = state.views.find((view) => view.assetPath) || state.views[0];
     state.activeViewId = initialView ? initialView.id : null;
-    const initialZone =
-        initialView && initialView.zones.find((zone) => zone.assetPath);
-    state.activeZoneId = initialZone ? initialZone.id : null;
 
     renderStage();
     updateSidebar();
