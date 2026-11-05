@@ -7,6 +7,7 @@ from cart.models import CartItem
 from customization.models import CustomizationDraft
 from orders.models import Order
 from products.models import Product, ProductView
+from promotions.services import attach_promotion_badges
 
 # The home page only teases the catalogue: it shows the newest products and a
 # link to the paginated catalogue (see products.views.product_list).
@@ -192,6 +193,9 @@ def index(request):
     # drafts belong to the workspace, never to the shop cards.
     for product in products:
         _attach_card_preview(product, None, product)
+
+    # Single query for the whole grid: each card teases the best price break.
+    attach_promotion_badges(products)
 
     featured_product = next(
         (product for product in products if product.primary_view),

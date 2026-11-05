@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from auravisual_ecommerce.pagination import paginate
+from promotions.services import attach_promotion_badges
 
 from .forms import (
     DEFAULT_AREA_RATIOS,
@@ -75,6 +76,8 @@ def product_list(request):
     # catalogue never loads the whole table: see auravisual_ecommerce.pagination.
     page_obj, page_context = paginate(request, queryset, settings.PRODUCTS_PAGE_SIZE)
     products = _attach_gallery_views(list(page_obj.object_list))
+    # One query for every promotion on the page: cards show the best break.
+    attach_promotion_badges(products)
     return render(
         request,
         "products/list.html",

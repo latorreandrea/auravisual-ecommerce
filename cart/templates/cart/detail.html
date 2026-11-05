@@ -27,6 +27,12 @@
                     <div>
                         <h3 class="mb-1">{{ item.name }}</h3>
                         <p class="mb-0">Quantity: {{ item.quantity }} &middot; Unit price: &euro; {{ item.price }}</p>
+                        {% if item.promotion_label %}
+                        <p class="mb-0 small text-success">
+                            <i class="bi bi-tags me-1"></i>{{ item.promotion_label }}
+                            {% if item.extra_units %}&middot; {{ item.extra_units }} extra unit{{ item.extra_units|pluralize }} at the base price{% endif %}
+                        </p>
+                        {% endif %}
                         {% if item.draft_missing %}
                         <p class="mb-0 small text-danger">
                             <i class="bi bi-exclamation-triangle me-1"></i>This customization is no longer available.
@@ -40,7 +46,13 @@
                     </div>
                 </div>
                 <div class="text-end">
+                    {% if item.discount_total %}
+                    <p class="mb-1"><s class="text-muted">&euro; {{ item.gross_line_total }}</s></p>
+                    <p class="product-price mb-1">&euro; {{ item.line_total }}</p>
+                    <p class="mb-2 small text-success">You save &euro; {{ item.discount_total }}</p>
+                    {% else %}
                     <p class="product-price mb-2">&euro; {{ item.line_total }}</p>
+                    {% endif %}
                     <div class="d-flex flex-wrap justify-content-end gap-2">
                         {% if item.draft_id %}
                         <a href="{% url 'customization:editor' item.slug %}?draft={{ item.draft_id }}" class="btn btn-sm btn-outline-primary">
@@ -71,7 +83,14 @@
     </div>
 
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mt-4">
-        <p class="product-price mb-0">Total: &euro; {{ cart_summary.total }}</p>
+        <div>
+            <p class="product-price mb-0">Total: &euro; {{ cart_summary.total }}</p>
+            {% if cart_summary.discount_total %}
+            <p class="mb-0 small text-success">
+                <i class="bi bi-tags me-1"></i>You save &euro; {{ cart_summary.discount_total }} on a subtotal of &euro; {{ cart_summary.subtotal }}
+            </p>
+            {% endif %}
+        </div>
         <form action="{% url 'cart:clear' %}" method="post" class="mb-0">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-secondary">

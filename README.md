@@ -22,6 +22,7 @@ The core goal is to let customers personalize the products before purchasing the
 - [Authentication](#authentication)
 - [Customization Workflow](#customization-workflow)
 - [Cart and Orders](#cart-and-orders)
+- [Promotions](#promotions)
 - [Product Catalogue Side Gallery](#product-catalogue-side-gallery)
 - [Frontend Structure](#frontend-structure)
 - [API Roadmap (Django Ninja + Stripe)](#api-roadmap-django-ninja--stripe)
@@ -79,6 +80,15 @@ Customers can:
     range. Workspace project cards tilt on their miniature image only, so the
     product name, project name and price below stay flat and readable.
 - **Cart app** for cart management and global cart context.
+- **Promotions app** for staff-defined quantity bundles on a single product:
+  - a promotion has a name and a ladder of price breaks (e.g. 5 units for
+    EUR 40, 10 units for EUR 70), all managed from the Admin;
+  - a break covers its own units at the break price, while the units above it
+    stay at the product base price: with a EUR 10 base price and the ladder
+    above, 7 units cost EUR 60 (5 for EUR 40 + 2 × EUR 10) instead of EUR 70;
+  - the cheapest break wins, inactive promotions are ignored everywhere, and
+    every price comes from one shared pricing service, so the cart, the
+    catalogue and the home page can never disagree.
 - **Orders app** for checkout domain and order state management:
   - `Order received`
   - `Being prepared`
@@ -93,6 +103,8 @@ Customers can:
 
 - `home`: landing/index views.
 - `products`: product model, listing, stock info.
+- `promotions`: per-product quantity price breaks (staff-defined in the Admin,
+  read-only for the storefront).
 - `accounts`: user profile and shipping address domain.
 - `customization`: customization projects, previews, print archives and the editor.
 - `cart`: cart logic, add/remove/clear actions, global context processor.
@@ -255,7 +267,8 @@ mode.
    - `/orders/` user order list (authenticated)
    - `/customization/` saved customization projects (authenticated, own projects)
    - `/customization/product/<slug>/` customization editor (authenticated)
-   - `/admin/` Django administration (staff only)
+   - `/admin/` Django administration (staff only): products, sides, promotions
+     and their price breaks
 
 ---
 
@@ -396,8 +409,72 @@ page.
 
 - Session cart powers add/remove/clear actions.
 - A cart context processor exposes cart summary globally for templates.
+- Line prices come from the promotions pricing service, so quantity breaks are
+  applied per line (see [Promotions](#promotions)).
 - Success toast includes a scrollable cart preview when cart items exist.
 - Error toast displays failure reason (e.g. stock not available).
+
+---
+
+## Promotions
+
+Promotions are a staff-only feature: the Admin defines them and the storefront
+only reads them. A `Promotion` belongs to **one** product and holds one or more
+`PromotionTier` rows (quantity → total price), so a bundle never spreads across
+products or cart lines.
+
+### Price rule
+
+A break covers its own units at the break price, and any unit above the break
+keeps the product base price. The storefront always picks the eligible break with
+the lowest net total and falls back to the base price when no break is cheaper.
+
+With a EUR 10.00 base price and the ladder `5 for EUR 40` / `10 for EUR 70`:
+
+| Quantity | Gross | Net | Saving | Break used |
+| --- | --- | --- | --- | --- |
+| 4 | EUR 40.00 | EUR 40.00 | EUR 0.00 | none |
+| 7 | EUR 70.00 | EUR 60.00 (40 + 2 × 10) | EUR 10.00 | 5 for EUR 40 |
+| 10 | EUR 100.00 | EUR 70.00 | EUR 30.00 | 10 for EUR 70 |
+| 25 | EUR 250.00 | EUR 220.00 (70 + 15 × 10) | EUR 30.00 | 10 for EUR 70 |
+
+Two cart lines of 4 units each are priced separately and never reach the
+5-unit break.
+
+### Admin validation
+
+The ladder is validated as a whole (`Promotion.validate_tiers`, shared by the
+Admin inline), so a promotion cannot be saved when:
+
+- it has no breaks, or two breaks for the same quantity (also a
+  `UniqueConstraint` on `promotion` + `quantity`);
+- a break is not a saving, i.e. `price >= base_price × quantity`;
+- a total does not grow with the quantity, or a break does not lower the unit
+  price of the previous one;
+- a break price is not greater than zero (also a `CheckConstraint`).
+
+`ProductAdmin` lists the promotions of a product as a read-only inline that
+links to the promotion page, where the breaks are edited.
+
+### Where the prices appear
+
+- `/cart/`: struck-through gross line total, net total, "You save" per line and
+  for the whole cart (`cart_summary.subtotal`, `discount_total`, `total`);
+- `/shop/` and `/`: a badge with the best break on the product card
+  (`T-shirt bundle: 10 for €70.00`), loaded with two queries per page;
+- each cart line also exposes `unit_price`, `gross_line_total`, `line_total`,
+  `discount_total`, `promotion_name`, `promotion_label` and `extra_units`.
+
+`promotions/services.py` is the only place that computes a price:
+`active_promotions_for()` (bulk `{product_id: [promotion]}` map with the breaks
+prefetched), `price_line()` (one line, returns a `LinePricing` dataclass),
+`best_break()` and `attach_promotion_badges()` (catalogue and home cards).
+
+### Not implemented yet
+
+Checkout snapshots (orders store no price of their own), percentage discounts,
+coupon codes, cross-product or category promotions, minimum-cart thresholds and
+validity windows (start/end dates).
 
 ---
 
@@ -557,6 +634,7 @@ Run the product-focused suite first, then the full project suite and deployment 
 
 ```bash
 python manage.py test products
+python manage.py test promotions
 python manage.py test
 python manage.py check
 python manage.py makemigrations --check --dry-run
@@ -613,6 +691,17 @@ and the Vanilla-Tilt hooks (tilt angles, no glare overlay, no product-name bar i
 the hero). The `accounts` and `cart` suites cover the signup/login `next` flow,
 the customization signup invitation, staff-only admin access and the anonymous
 customization CTAs.
+
+The `promotions` suite covers the pricing rule (`price_line` for 4, 7, 10 and 25
+units, the cheapest break winning between two promotions, units above a break
+staying at the base price, inactive promotions ignored, promotions never crossing
+products and cart lines priced one by one), the ladder validation (missing breaks,
+a break that is not a saving, totals that do not grow, a unit price that does not
+drop, the unique break per quantity and the positive price constraint), the cart
+summary keys and the cart page ("You save", struck-through gross total), the
+`/shop/` and `/` badges, the staff-only Admin pages (creating a promotion with its
+breaks, rejecting an empty or non-saving ladder, the read-only inline on the
+product page) and the query counts (three for the cart, two per catalogue page).
 
 ### Manual QA: product wizard
 

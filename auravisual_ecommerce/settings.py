@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     # `accounts/templates/account/*` shadow the default django-allauth pages.
     "home",
     "products",
+    "promotions",
     "accounts",
     "customization",
     "cart",

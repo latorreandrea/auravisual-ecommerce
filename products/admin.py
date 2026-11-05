@@ -2,6 +2,8 @@ from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 
+from promotions.models import Promotion
+
 from .forms import MockupImageFormMixin
 from .models import Product, ProductView
 
@@ -41,6 +43,24 @@ class ProductViewInline(MockupPreviewMixin, admin.TabularInline):
     show_change_link = True
 
 
+class PromotionInline(admin.TabularInline):
+    """Read-only overview: promotions are edited on their own page."""
+
+    model = Promotion
+    extra = 0
+    fields = ("name", "ladder", "is_active")
+    readonly_fields = ("name", "ladder", "is_active")
+    show_change_link = True
+    can_delete = False
+    verbose_name_plural = "Promotions"
+
+    @admin.display(description="Price breaks")
+    def ladder(self, obj):
+        if obj is None or not obj.pk:
+            return "-"
+        return obj.tiers_summary or "-"
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = (
@@ -55,7 +75,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_editable = ("is_active",)
     search_fields = ("title", "slug", "description")
     prepopulated_fields = {"slug": ("title",)}
-    inlines = (ProductViewInline,)
+    inlines = (ProductViewInline, PromotionInline)
     readonly_fields = ("created_at", "updated_at")
 
 

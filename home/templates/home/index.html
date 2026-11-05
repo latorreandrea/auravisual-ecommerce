@@ -224,6 +224,11 @@
                 <div class="home-product-body">
                     <h3>{{ product.title }}</h3>
                     <p>{{ product.short_description|default:product.description|default:"A customizable physical product made to carry your brand."|truncatechars:140 }}</p>
+                    {% if product.promotion_teaser %}
+                    <p class="product-meta mb-2">
+                        <i class="bi bi-tags me-2" aria-hidden="true"></i>{{ product.promotion_name }}: {{ product.promotion_teaser }}
+                    </p>
+                    {% endif %}
                     <div class="home-product-meta">
                         <span class="product-price">&euro; {{ product.base_price }}</span>
                         <span class="product-meta{% if product.stock_quantity < 1 %} is-empty{% endif %}">

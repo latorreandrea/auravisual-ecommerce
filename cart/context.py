@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from customization.models import CustomizationDraft
 from products.models import Product
+from promotions.services import active_promotions_for, price_line
 
 CART_SESSION_KEY = "cart"
 
@@ -56,11 +57,13 @@ def normalize_session_cart(session_cart):
 def _build_cart_summary(session_cart, user=None):
     lines = normalize_session_cart(session_cart)
     items = []
+    subtotal = Decimal("0.00")
     total = Decimal("0.00")
 
     product_ids = {line["product_id"] for line in lines.values()}
     products = Product.objects.filter(pk__in=product_ids, is_active=True)
     products_map = {product.pk: product for product in products}
+    promotions_map = active_promotions_for(products_map)
 
     draft_ids = {line["draft_id"] for line in lines.values() if line["draft_id"]}
     drafts_map = {}
@@ -79,17 +82,28 @@ def _build_cart_summary(session_cart, user=None):
             draft = None
             draft_missing = True
 
-        line_total = product.base_price * line["quantity"]
-        total += line_total
+        pricing = price_line(
+            product,
+            line["quantity"],
+            promotions_map.get(product.pk, ()),
+        )
+        subtotal += pricing.gross_total
+        total += pricing.net_total
         items.append(
             {
                 "line_key": key,
                 "product_id": product.pk,
                 "name": product.title,
                 "slug": product.slug,
-                "price": product.base_price,
+                "price": pricing.unit_price,
+                "unit_price": pricing.unit_price,
                 "quantity": line["quantity"],
-                "line_total": line_total,
+                "gross_line_total": pricing.gross_total,
+                "line_total": pricing.net_total,
+                "discount_total": pricing.discount_total,
+                "promotion_name": pricing.promotion.name if pricing.promotion else "",
+                "promotion_label": pricing.promotion_label,
+                "extra_units": pricing.extra_units,
                 "draft": draft,
                 "draft_id": str(draft.pk) if draft else None,
                 "draft_missing": draft_missing,
@@ -105,6 +119,8 @@ def _build_cart_summary(session_cart, user=None):
 
     return {
         "items": items,
+        "subtotal": subtotal,
+        "discount_total": subtotal - total,
         "total": total,
         "count": sum(item["quantity"] for item in items),
     }

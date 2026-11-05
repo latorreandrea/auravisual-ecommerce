@@ -110,6 +110,11 @@
                 <h3>{{ product.title }}</h3>
                 <p class="mb-3">{{ product.short_description|default:product.description|default:"Description not available." }}</p>
                 <p class="product-price mb-3">&euro; {{ product.base_price }}</p>
+                {% if product.promotion_teaser %}
+                <p class="product-meta mb-3">
+                    <i class="bi bi-tags me-2" aria-hidden="true"></i>{{ product.promotion_name }}: {{ product.promotion_teaser }}
+                </p>
+                {% endif %}
                 <p class="mb-4">
                     <span class="product-meta{% if product.stock_quantity < 1 %} is-empty{% endif %}">
                         <i class="bi bi-box-seam me-2"></i>Availability: {{ product.stock_quantity }}
