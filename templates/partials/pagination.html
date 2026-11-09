@@ -1,18 +1,19 @@
 {% comment %}
 Shared pagination bar.
 
-Rendered by both the catalogue (products.views.product_list) and the workspace
-(customization.views.draft_list); the context comes from
-auravisual_ecommerce.pagination.paginate: ``page_obj``, ``page_links`` and
-``is_paginated``. Links only carry ``?page=``, because those two views expose no
-other query parameter.
+Rendered by the catalogue (products.views.product_list), the workspace
+(customization.views.draft_list) and the project list; the context comes from
+auravisual_ecommerce.pagination.paginate: ``page_obj``, ``page_links``,
+``is_paginated`` and ``pagination_query``. ``pagination_query`` carries the
+filters of the current request (the catalogue adds ``?status=`` for staff) and is
+empty when there is nothing to keep, so the links stay a plain ``?page=N``.
 {% endcomment %}
 {% if is_paginated %}
 <nav class="list-pagination" aria-label="Pagination">
   <ul class="pagination justify-content-center mb-2">
     <li class="page-item{% if not page_obj.has_previous %} disabled{% endif %}">
       {% if page_obj.has_previous %}
-      <a class="page-link" href="?page={{ page_obj.previous_page_number }}" rel="prev" aria-label="Previous page">
+      <a class="page-link" href="?{{ pagination_query }}page={{ page_obj.previous_page_number }}" rel="prev" aria-label="Previous page">
         <i class="bi bi-chevron-left" aria-hidden="true"></i>
       </a>
       {% else %}
@@ -25,12 +26,12 @@ other query parameter.
       {% elif link.is_current %}
     <li class="page-item active" aria-current="page"><span class="page-link">{{ link.number }}</span></li>
       {% else %}
-    <li class="page-item"><a class="page-link" href="?page={{ link.number }}" aria-label="Page {{ link.number }}">{{ link.number }}</a></li>
+    <li class="page-item"><a class="page-link" href="?{{ pagination_query }}page={{ link.number }}" aria-label="Page {{ link.number }}">{{ link.number }}</a></li>
       {% endif %}
     {% endfor %}
     <li class="page-item{% if not page_obj.has_next %} disabled{% endif %}">
       {% if page_obj.has_next %}
-      <a class="page-link" href="?page={{ page_obj.next_page_number }}" rel="next" aria-label="Next page">
+      <a class="page-link" href="?{{ pagination_query }}page={{ page_obj.next_page_number }}" rel="next" aria-label="Next page">
         <i class="bi bi-chevron-right" aria-hidden="true"></i>
       </a>
       {% else %}

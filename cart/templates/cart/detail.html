@@ -43,6 +43,15 @@
                             &middot; <a href="{{ item.draft_detail_url }}">View details</a>
                         </p>
                         {% endif %}
+                        {% if item.exceeds_stock %}
+                        <p class="mb-0 small text-danger">
+                            <i class="bi bi-box-seam me-1"></i>Only {{ item.available_quantity }} available: remove one unit to check out.
+                        </p>
+                        {% elif item.is_out_of_stock %}
+                        <p class="mb-0 small text-danger">
+                            <i class="bi bi-box-seam me-1"></i>Out of stock: this item cannot be checked out.
+                        </p>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="text-end">
@@ -91,12 +100,25 @@
             </p>
             {% endif %}
         </div>
-        <form action="{% url 'cart:clear' %}" method="post" class="mb-0">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-secondary">
-                <i class="bi bi-trash me-2"></i>Clear cart
-            </button>
-        </form>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <form action="{% url 'cart:clear' %}" method="post" class="mb-0">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-secondary">
+                    <i class="bi bi-trash me-2"></i>Clear cart
+                </button>
+            </form>
+            {% if user.is_authenticated %}
+            <a href="{% url 'orders:checkout' %}"
+               class="btn-get-started{% if cart_summary.has_stock_issue %} disabled{% endif %}"
+               {% if cart_summary.has_stock_issue %}aria-disabled="true" tabindex="-1"{% endif %}>
+                <i class="bi bi-credit-card me-2"></i>Checkout
+            </a>
+            {% else %}
+            <a href="{% url 'account_login' %}?next={{ request.get_full_path|urlencode }}" class="btn-get-started">
+                <i class="bi bi-person-plus me-2"></i>Sign in to checkout
+            </a>
+            {% endif %}
+        </div>
     </div>
     {% else %}
     <p class="text-center">Your cart is empty.</p>

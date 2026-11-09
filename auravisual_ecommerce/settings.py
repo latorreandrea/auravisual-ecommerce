@@ -162,6 +162,19 @@ CUSTOMIZATION_PRINT_WEBHOOK_SECRET = os.environ.get("CUSTOMIZATION_PRINT_WEBHOOK
 PRODUCTS_PAGE_SIZE = int(os.environ.get("PRODUCTS_PAGE_SIZE", "12"))
 PROJECTS_PAGE_SIZE = int(os.environ.get("PROJECTS_PAGE_SIZE", "8"))
 
+# ---------------------------------------------------------------------------
+# Checkout
+# ---------------------------------------------------------------------------
+# The storefront has no payment gateway yet, so an order commits its stock as
+# soon as it is placed. When Stripe is wired in, an order only *reserves* its
+# units (see orders.services): this is how long that hold survives before the
+# `expire_stock_holds` command releases it. Keep it above the time a customer
+# needs to finish the payment on the provider page.
+STOCK_RESERVATION_MINUTES = int(os.environ.get("STOCK_RESERVATION_MINUTES", "30"))
+# Currency of the prices and of the order totals (ISO 4217). Stripe expects the
+# same code when a payment intent is created.
+STORE_CURRENCY = os.environ.get("STORE_CURRENCY", "EUR")
+
 # Cache-busting version appended to static assets from the templates
 # (see auravisual_ecommerce/context.py and {% static %}?v={{ ASSET_VERSION }}).
 ASSET_VERSION = os.environ.get("ASSET_VERSION", "1")

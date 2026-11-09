@@ -408,3 +408,228 @@ class PromotionStorefrontTests(PromotionFixtureMixin, TestCase):
 
         self.assertEqual(other.promotion_name, "")
         self.assertEqual(other.promotion_teaser, "")
+
+class PromotionStaffPageTests(PromotionFixtureMixin, TestCase):
+    """The staff pages of /promotions/ (the admin has its own suite above)."""
+
+    def setUp(self):
+        self.create_fixture()
+        self.staff = User.objects.create_user(
+            username="staff-user",
+            password="secret",
+            is_staff=True,
+        )
+        self.customer = User.objects.create_user(
+            username="customer",
+            password="secret",
+        )
+        self.second_product = Product.objects.create(
+            title="Canvas Tote",
+            base_price=Decimal("20.00"),
+            stock_quantity=4,
+        )
+
+    def _create_payload(self, **overrides):
+        payload = {
+            "name": "Tote bundle",
+            "product": self.second_product.pk,
+            "is_active": "on",
+            "tiers-TOTAL_FORMS": "2",
+            "tiers-INITIAL_FORMS": "0",
+            "tiers-MIN_NUM_FORMS": "1",
+            "tiers-MAX_NUM_FORMS": "1000",
+            "tiers-0-quantity": "3",
+            "tiers-0-price": "50.00",
+            "tiers-1-quantity": "6",
+            "tiers-1-price": "90.00",
+        }
+        payload.update(overrides)
+        return payload
+
+    def _edit_payload(self, **overrides):
+        payload = {
+            "name": "T-shirt bundle",
+            "product": self.product.pk,
+            "is_active": "on",
+            "tiers-TOTAL_FORMS": "2",
+            "tiers-INITIAL_FORMS": "2",
+            "tiers-MIN_NUM_FORMS": "1",
+            "tiers-MAX_NUM_FORMS": "1000",
+            "tiers-0-id": str(self.tier_5.pk),
+            "tiers-0-quantity": "5",
+            "tiers-0-price": "38.00",
+            "tiers-1-id": str(self.tier_10.pk),
+            "tiers-1-quantity": "10",
+            "tiers-1-price": "70.00",
+        }
+        payload.update(overrides)
+        return payload
+
+    def _pages(self):
+        return (
+            reverse("promotions:list"),
+            reverse("promotions:create"),
+            reverse("promotions:detail", args=[self.promotion.pk]),
+        )
+
+    def test_anonymous_visitors_are_sent_to_the_login_page(self):
+        for url in self._pages():
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn(reverse("account_login"), response["Location"])
+
+    def test_customers_are_refused(self):
+        self.client.force_login(self.customer)
+
+        for url in self._pages():
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 403)
+
+        response = self.client.post(
+            reverse("promotions:delete", args=[self.promotion.pk])
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Promotion.objects.filter(pk=self.promotion.pk).exists())
+
+    def test_the_list_shows_the_ladder_and_the_status(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("promotions:list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "T-shirt bundle")
+        self.assertContains(response, "5 for EUR 40.00")
+        self.assertContains(response, "Classic Tee")
+
+    def test_the_list_can_be_searched_and_filtered(self):
+        self.client.force_login(self.staff)
+
+        by_name = self.client.get(reverse("promotions:list"), {"q": "canvas"})
+        self.assertNotContains(by_name, "T-shirt bundle")
+        self.assertContains(by_name, "No promotion matches this filter")
+
+        inactive = self.client.get(reverse("promotions:list"), {"status": "inactive"})
+        self.assertNotContains(inactive, "T-shirt bundle")
+
+        active = self.client.get(reverse("promotions:list"), {"status": "active"})
+        self.assertContains(active, "T-shirt bundle")
+
+
+
+    def test_staff_can_create_a_promotion_with_its_ladder(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("promotions:create"),
+            self._create_payload(),
+        )
+
+        promotion = Promotion.objects.get(name="Tote bundle")
+        self.assertRedirects(
+            response,
+            reverse("promotions:detail", args=[promotion.pk]),
+        )
+        self.assertEqual(promotion.product, self.second_product)
+        self.assertEqual(
+            list(promotion.tiers.values_list("quantity", "price")),
+            [(3, Decimal("50.00")), (6, Decimal("90.00"))],
+        )
+
+    def test_the_product_query_parameter_prefills_the_new_promotion(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            reverse("promotions:create"),
+            {"product": self.second_product.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'<option value="{self.second_product.pk}" selected>',
+        )
+        self.assertContains(response, 'value="Canvas Tote bundle"')
+        # The product of the existing promotion is flagged in the select.
+        self.assertContains(response, "already promoted")
+
+    def test_a_ladder_that_is_not_a_saving_is_rejected(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("promotions:create"),
+            self._create_payload(**{"tiers-0-price": "100.00"}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "is not a saving")
+        self.assertFalse(Promotion.objects.filter(name="Tote bundle").exists())
+
+    def test_a_ladder_without_breaks_is_rejected(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("promotions:create"),
+            self._create_payload(
+                **{
+                    "tiers-TOTAL_FORMS": "1",
+                    "tiers-0-quantity": "",
+                    "tiers-0-price": "",
+                }
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Add at least one quantity/price break")
+        self.assertFalse(Promotion.objects.filter(name="Tote bundle").exists())
+
+    def test_staff_can_edit_a_break_and_delete_another(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("promotions:detail", args=[self.promotion.pk]),
+            self._edit_payload(**{"tiers-1-DELETE": "on"}),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("promotions:detail", args=[self.promotion.pk]),
+        )
+        self.promotion.refresh_from_db()
+        self.assertEqual(self.promotion.name, "T-shirt bundle")
+        self.assertEqual(self.promotion.tiers.count(), 1)
+        self.assertEqual(self.promotion.tiers.get().price, Decimal("38.00"))
+
+    def test_the_detail_page_shows_the_saved_ladder_and_the_delete_dialog(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            reverse("promotions:detail", args=[self.promotion.pk])
+        )
+
+        self.assertContains(response, "Saved ladder")
+        self.assertContains(response, "20% cheaper")
+        self.assertContains(response, "30% cheaper")
+        self.assertContains(response, "delete-promotion-modal")
+
+    def test_staff_can_delete_a_promotion(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("promotions:delete", args=[self.promotion.pk])
+        )
+
+        self.assertRedirects(response, reverse("promotions:list"))
+        self.assertFalse(Promotion.objects.filter(pk=self.promotion.pk).exists())
+        # The product goes back to its base price everywhere.
+        self.assertEqual(price_line(self.product, 5).net_total, Decimal("50.00"))
+
+    def test_deleting_requires_a_post(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            reverse("promotions:delete", args=[self.promotion.pk])
+        )
+
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(Promotion.objects.filter(pk=self.promotion.pk).exists())

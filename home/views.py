@@ -1,12 +1,15 @@
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.core.files.storage import default_storage
-from django.db.models import Prefetch
+from django.db.models import F, Prefetch
 from django.shortcuts import render
 
 from cart.models import CartItem
 from customization.models import CustomizationDraft
 from orders.models import Order
 from products.models import Product, ProductView
+from promotions.models import Promotion
 from promotions.services import attach_promotion_badges
 
 # The home page only teases the catalogue: it shows the newest products and a
@@ -175,6 +178,44 @@ def _attach_card_preview(target, draft, product):
 
 def _prefetched_views_queryset():
     return ProductView.objects.order_by("sort_order", "id")
+
+
+STAFF_RECENT_PROMOTIONS_LIMIT = 5
+
+
+@login_required
+def staff_dashboard(request):
+    """Staff hub: the read-only counters and the shortcuts to change the shop.
+
+    The page never writes: every button sends the staff member to the list that
+    owns the data (the catalogue, the promotion manager or the Django admin), so
+    there is exactly one place to create or edit each record.
+    """
+
+    if not request.user.is_staff:
+        raise PermissionDenied
+
+    promotions = (
+        Promotion.objects.select_related("product")
+        .prefetch_related("tiers")
+        .order_by("-updated_at", "-created_at")[:STAFF_RECENT_PROMOTIONS_LIMIT]
+    )
+
+    return render(
+        request,
+        "home/staff_dashboard.html",
+        {
+            "product_count": Product.objects.count(),
+            "active_product_count": Product.objects.filter(is_active=True).count(),
+            "out_of_stock_count": Product.objects.filter(
+                stock_quantity__lte=F("reserved_quantity")
+            ).count(),
+            "promotion_count": Promotion.objects.count(),
+            "active_promotion_count": Promotion.objects.filter(is_active=True).count(),
+            "recent_promotions": promotions,
+            "order_count": Order.objects.count(),
+        },
+    )
 
 
 def index(request):

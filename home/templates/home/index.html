@@ -46,8 +46,8 @@
                         <i class="bi bi-play-circle me-2"></i>See how it works
                     </a>
                     {% if user.is_staff %}
-                    <a href="{% url 'products:create' %}" class="btn-home-ghost">
-                        <i class="bi bi-plus-circle me-2"></i>Create product
+                    <a href="{% url 'home:staff' %}" class="btn-home-ghost">
+                        <i class="bi bi-speedometer2 me-2"></i>Staff tools
                     </a>
                     {% endif %}
                 </div>
@@ -217,7 +217,7 @@
                         <span>Mockup coming soon</span>
                     </div>
                     {% endif %}
-                    {% if product.stock_quantity < 1 %}
+                    {% if product.is_out_of_stock %}
                     <span class="home-product-flag is-sold-out">Sold out</span>
                     {% endif %}
                 </div>
@@ -231,11 +231,11 @@
                     {% endif %}
                     <div class="home-product-meta">
                         <span class="product-price">&euro; {{ product.base_price }}</span>
-                        <span class="product-meta{% if product.stock_quantity < 1 %} is-empty{% endif %}">
-                            {% if product.stock_quantity < 1 %}
+                        <span class="product-meta{% if product.is_out_of_stock %} is-empty{% endif %}">
+                            {% if product.is_out_of_stock %}
                             <i class="bi bi-x-circle me-1"></i>Sold out
                             {% else %}
-                            <i class="bi bi-box-seam me-1"></i>{{ product.stock_quantity }} in stock
+                            <i class="bi bi-box-seam me-1"></i>{{ product.available_quantity }} in stock
                             {% endif %}
                         </span>
                     </div>

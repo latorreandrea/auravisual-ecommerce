@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ promotion.name }} | Promotions | AuraVisual Ecommerce{% endblock %}
+{% block meta_description %}Staff page to edit a quantity price promotion.{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/staff.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/promotion-formset.js' %}?v={{ ASSET_VERSION }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<section class="staff-page">
+    <header class="staff-header">
+        <div>
+            <p class="staff-eyebrow">
+                <a href="{% url 'promotions:list' %}">Promotions</a> /
+                {{ promotion.product.title }}
+            </p>
+            <h2>{{ promotion.name }}</h2>
+            <p>
+                {{ promotion.product.title }} &middot; base price &euro; {{ promotion.product.base_price }}
+                <span class="staff-badge {% if promotion.is_active %}staff-badge-active{% else %}staff-badge-inactive{% endif %} ms-2">
+                    {{ promotion.is_active|yesno:"Active,Inactive" }}
+                </span>
+            </p>
+        </div>
+        <div class="staff-actions">
+            <a href="{{ promotion.product.get_absolute_url }}" class="btn btn-outline-secondary">
+                <i class="bi bi-box-arrow-up-right me-2"></i>View product
+            </a>
+            <a href="{% url 'promotions:list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-2"></i>All promotions
+            </a>
+        </div>
+    </header>
+
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% include "promotions/_form.html" %}
+        <div class="staff-form-actions">
+            <button type="submit" class="btn-get-started">
+                <i class="bi bi-check2 me-2"></i>Save promotion
+            </button>
+            <a href="{% url 'promotions:list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </form>
+
+    <div class="row g-4 mt-1">
+        <div class="col-lg-7">
+            <div class="staff-card">
+                <h3 class="staff-card-title">Saved ladder</h3>
+                {% if ladder_rows %}
+                <div class="table-responsive">
+                    <table class="table staff-table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Units</th>
+                                <th scope="col">Total</th>
+                                <th scope="col">Unit price</th>
+                                <th scope="col">Saving</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in ladder_rows %}
+                            <tr{% if row.tier == best_tier %} class="is-best"{% endif %}>
+                                <td>{{ row.tier.quantity }}</td>
+                                <td>&euro; {{ row.tier.price }}</td>
+                                <td>&euro; {{ row.tier.unit_price }}</td>
+                                <td class="small">
+                                    &euro; {{ row.saving }} off &euro; {{ row.gross }}
+                                    <span class="d-block text-success">{{ row.saving_percent }}% cheaper</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="small text-muted mt-3 mb-0">
+                    <i class="bi bi-info-circle me-1"></i>
+                    The promotion changes the price only: seven units with a
+                    &ldquo;5 for &euro; 40&rdquo; break still take seven units out of the stock.
+                </p>
+                {% else %}
+                <p class="mb-0">This promotion has no price break yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="staff-card staff-card-danger">
+                <h3 class="staff-card-title">Delete promotion</h3>
+                <p class="small">
+                    Deleting the promotion sends {{ promotion.product.title }} back to its base
+                    price everywhere: catalogue, product page and cart.
+                </p>
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delete-promotion-modal">
+                    <i class="bi bi-trash me-2"></i>Delete promotion
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="modal fade" id="delete-promotion-modal" tabindex="-1" aria-labelledby="delete-promotion-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'promotions:delete' promotion.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h3 class="modal-title h5" id="delete-promotion-title">Delete &ldquo;{{ promotion.name }}&rdquo;?</h3>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">
+                        The price breaks are removed for good. Orders that were already placed keep
+                        their total: it was stored when the order was created.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep it</button>
+                    <button type="submit" class="btn btn-danger">Delete promotion</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

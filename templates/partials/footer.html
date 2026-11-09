@@ -62,7 +62,7 @@
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'accounts:profile' %}" aria-label="Go to your profile">Profile</a></li>
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'orders:list' %}" aria-label="Go to your orders">Orders</a></li>
                   {% if user.is_staff %}
-                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'products:create' %}" aria-label="Create a new product">Create product</a></li>
+                  <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'home:staff' %}" aria-label="Open the staff tools">Staff tools</a></li>
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'admin:index' %}" aria-label="Open the administration area">Admin</a></li>
                   {% endif %}
                   <li><i class="bi bi-chevron-right me-2"></i><a href="{% url 'account_logout' %}" aria-label="Log out of your account">Logout</a></li>

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout | AuraVisual Ecommerce{% endblock %}
+
+{% block meta_description %}Confirm your shipping details and place your AuraVisual Ecommerce order.{% endblock %}
+{% block og_title %}Checkout | AuraVisual Ecommerce{% endblock %}
+{% block og_description %}Confirm your shipping details and place your AuraVisual Ecommerce order.{% endblock %}
+{% block twitter_title %}Checkout | AuraVisual Ecommerce{% endblock %}
+{% block twitter_description %}Confirm your shipping details and place your AuraVisual Ecommerce order.{% endblock %}
+
+{% block content %}
+<section>
+    <div class="section-title">
+        <h2>Checkout</h2>
+        <p>Where should we ship your order?</p>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="info-card">
+                <h3 class="mb-3">Shipping address</h3>
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger" role="alert">
+                        {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+                    </div>
+                    {% endif %}
+                    <div class="row g-3">
+                        {% for field in form %}
+                        <div class="{% if field.name == 'city' or field.name == 'postal_code' %}col-md-6{% else %}col-12{% endif %}">
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.help_text %}
+                            <p class="form-text mb-0">{{ field.help_text }}</p>
+                            {% endif %}
+                            {% for error in field.errors %}
+                            <p class="text-danger small mb-0">{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <p class="small text-muted mt-3 mb-0">
+                        <i class="bi bi-shield-check me-1"></i>
+                        Your order is final once you press the button below. Units are held for
+                        {{ reservation_minutes }} minutes while a payment is pending.
+                    </p>
+                    <div class="d-flex flex-wrap gap-2 mt-4">
+                        <button type="submit" class="btn-get-started">
+                            <i class="bi bi-credit-card me-2"></i>Place order
+                        </button>
+                        <a href="{% url 'cart:detail' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-2"></i>Back to cart
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="info-card">
+                <h3 class="mb-3">Order summary</h3>
+                <ul class="list-unstyled mb-3">
+                    {% for item in cart_summary.items %}
+                    <li class="d-flex justify-content-between gap-3 mb-2">
+                        <span>
+                            {{ item.name }} &times; {{ item.quantity }}
+                            {% if item.promotion_label %}
+                            <span class="d-block small text-success">
+                                <i class="bi bi-tags me-1"></i>{{ item.promotion_label }}
+                            </span>
+                            {% endif %}
+                        </span>
+                        <span class="text-nowrap">&euro; {{ item.line_total }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% if cart_summary.discount_total %}
+                <p class="mb-1 small text-success">
+                    <i class="bi bi-tags me-1"></i>You save &euro; {{ cart_summary.discount_total }} on a subtotal of &euro; {{ cart_summary.subtotal }}
+                </p>
+                {% endif %}
+                <p class="product-price mb-0">Total: &euro; {{ cart_summary.total }}</p>
+                {% if cart_summary.has_stock_issue %}
+                <p class="small text-danger mt-3 mb-0">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    Some quantities are above the stock we can promise.
+                    <a href="{% url 'cart:detail' %}">Fix the cart</a> before placing the order.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

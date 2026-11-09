@@ -8,11 +8,14 @@ from PIL import Image
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.html import Element, parse_html
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from customization.models import CustomizationDraft
+from promotions.models import Promotion, PromotionTier
 
 from .forms import DEFAULT_AREA_RATIOS, SideAreaForm
 from .models import Product, ProductView
@@ -716,6 +719,211 @@ class ProductListPaginationTests(TestCase):
         self.assertContains(response, "2 active products")
 
 
+class StaffCatalogueActionsTests(TestCase):
+    """The staff shortcuts grafted on the public catalogue (`/shop/`)."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="staff",
+            password="s3cret-pass",
+            is_staff=True,
+        )
+        self.customer = User.objects.create_user(
+            username="customer",
+            password="s3cret-pass",
+        )
+        self.product = Product.objects.create(
+            title="NFC business card",
+            base_price=Decimal("39.00"),
+            stock_quantity=12,
+        )
+        self.promotion = Promotion.objects.create(
+            name="Business card bundle",
+            product=self.product,
+        )
+        PromotionTier.objects.create(
+            promotion=self.promotion,
+            quantity=5,
+            price=Decimal("150.00"),
+        )
+        self.hidden_product = Product.objects.create(
+            title="Retired QR stand",
+            base_price=Decimal("59.00"),
+            stock_quantity=2,
+            is_active=False,
+        )
+
+    def test_staff_see_the_edit_promotion_and_hide_actions(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertContains(
+            response,
+            f'href="{reverse("products:edit", args=[self.product.slug])}"',
+        )
+        self.assertContains(
+            response,
+            f'href="{reverse("promotions:detail", args=[self.promotion.pk])}"',
+        )
+        self.assertContains(
+            response,
+            f'action="{reverse("products:deactivate", args=[self.product.slug])}"',
+        )
+        self.assertContains(response, "12 on the shelf")
+
+    def test_a_product_without_a_promotion_offers_to_create_one(self):
+        other = Product.objects.create(
+            title="QR stand",
+            base_price=Decimal("59.00"),
+            stock_quantity=3,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertContains(
+            response,
+            f'{reverse("promotions:create")}?product={other.pk}',
+        )
+
+    def test_held_units_are_shown_to_staff(self):
+        Product.objects.filter(pk=self.product.pk).update(reserved_quantity=10)
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertContains(response, "12 on the shelf")
+        self.assertContains(response, "10 held")
+
+    def test_customers_do_not_get_the_staff_actions(self):
+        self.client.force_login(self.customer)
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertNotContains(response, "on the shelf")
+        self.assertNotContains(response, "Show hidden products")
+        self.assertNotContains(
+            response,
+            reverse("products:edit", args=[self.product.slug]),
+        )
+        self.assertNotContains(
+            response,
+            reverse("products:deactivate", args=[self.product.slug]),
+        )
+
+
+    def test_staff_switch_the_catalogue_to_the_hidden_products(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("products:list"), {"status": "hidden"})
+
+        self.assertTrue(response.context["show_hidden"])
+        self.assertEqual(
+            [product.title for product in response.context["products"]],
+            ["Retired QR stand"],
+        )
+        self.assertContains(response, "Hidden from the shop")
+        self.assertContains(response, "Show published products")
+        self.assertNotContains(response, "status=hidden")
+
+    def test_the_toggle_counts_the_hidden_products(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("products:list"))
+
+        self.assertContains(response, "Show hidden products (1)")
+
+    def test_customers_cannot_open_the_hidden_view(self):
+        self.client.force_login(self.customer)
+
+        response = self.client.get(reverse("products:list"), {"status": "hidden"})
+
+        self.assertEqual(
+            [product.title for product in response.context["products"]],
+            ["NFC business card"],
+        )
+        self.assertNotIn("show_hidden", response.context)
+
+    def test_anonymous_visitors_cannot_open_the_hidden_view(self):
+        response = self.client.get(reverse("products:list"), {"status": "hidden"})
+
+        self.assertEqual(
+            [product.title for product in response.context["products"]],
+            ["NFC business card"],
+        )
+
+    def test_a_hidden_product_shows_no_customer_call_to_action(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("products:list"), {"status": "hidden"})
+
+        self.assertContains(response, "customers cannot see it")
+        self.assertNotContains(
+            response,
+            reverse("cart:add", args=[self.hidden_product.pk]),
+        )
+        self.assertNotContains(
+            response,
+            reverse("products:deactivate", args=[self.hidden_product.slug]),
+        )
+
+    def test_the_page_links_keep_the_hidden_filter(self):
+        for index in range(2):
+            Product.objects.create(
+                title=f"Hidden product {index}",
+                base_price=Decimal("10.00"),
+                stock_quantity=1,
+                is_active=False,
+            )
+        self.client.force_login(self.staff)
+
+        with self.settings(PRODUCTS_PAGE_SIZE=1):
+            first_page = self.client.get(
+                reverse("products:list"), {"status": "hidden"}
+            )
+            second_page = self.client.get(
+                reverse("products:list"), {"status": "hidden", "page": 2}
+            )
+
+        self.assertContains(first_page, "?status=hidden&amp;page=2")
+        self.assertContains(second_page, "?status=hidden&amp;page=1")
+
+    def test_the_catalogue_bar_keeps_a_plain_page_link_without_filters(self):
+        Product.objects.create(
+            title="QR stand",
+            base_price=Decimal("59.00"),
+            stock_quantity=3,
+        )
+
+        with self.settings(PRODUCTS_PAGE_SIZE=1):
+            response = self.client.get(reverse("products:list"))
+
+        self.assertContains(response, 'href="?page=2"')
+
+    def test_the_staff_actions_do_not_add_queries_per_card(self):
+        self.client.force_login(self.staff)
+
+        def catalogue_query_count():
+            with CaptureQueriesContext(connection) as captured:
+                self.client.get(reverse("products:list"))
+            return len(captured)
+
+        baseline = catalogue_query_count()
+        for index in range(4):
+            product = Product.objects.create(
+                title=f"Extra product {index}",
+                base_price=Decimal("10.00"),
+                stock_quantity=4,
+            )
+            Promotion.objects.create(
+                name=f"Extra bundle {index}",
+                product=product,
+            )
+
+        self.assertEqual(catalogue_query_count(), baseline)
+
+
 class StaffProductDeactivateViewTests(TestCase):
     def setUp(self):
         self.staff = User.objects.create_user(
@@ -834,3 +1042,146 @@ class StaffProductDeactivateViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+
+class StaffProductEditViewTests(TestCase):
+    """The product edit page behind the staff hub."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="staff",
+            password="s3cret-pass",
+            is_staff=True,
+        )
+        self.customer = User.objects.create_user(
+            username="customer",
+            password="s3cret-pass",
+        )
+        self.product = Product.objects.create(
+            title="Classic Tee",
+            description="A soft shirt.",
+            base_price=Decimal("25.00"),
+            stock_quantity=5,
+        )
+        self.promotion = Promotion.objects.create(
+            name="T-shirt bundle",
+            product=self.product,
+        )
+        PromotionTier.objects.create(
+            promotion=self.promotion,
+            quantity=5,
+            price=Decimal("100.00"),
+        )
+
+    def edit_url(self):
+        return reverse("products:edit", kwargs={"slug": self.product.slug})
+
+    def test_staff_see_the_product_and_its_promotion(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(self.edit_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Product details")
+        self.assertContains(response, "T-shirt bundle")
+        self.assertContains(
+            response,
+            reverse("promotions:detail", args=[self.promotion.pk]),
+        )
+
+    def test_staff_can_update_price_stock_and_visibility(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            self.edit_url(),
+            {
+                "title": "Classic Tee 2.0",
+                "description": "An even softer shirt.",
+                "base_price": "27.50",
+                "stock_quantity": "9",
+            },
+        )
+
+        self.assertRedirects(response, reverse("products:list"))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.title, "Classic Tee 2.0")
+        self.assertEqual(self.product.base_price, Decimal("27.50"))
+        self.assertEqual(self.product.stock_quantity, 9)
+        self.assertFalse(self.product.is_active)
+
+    def test_invalid_data_keeps_the_stored_product(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            self.edit_url(),
+            {
+                "title": "",
+                "description": "A soft shirt.",
+                "base_price": "-1.00",
+                "stock_quantity": "5",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.title, "Classic Tee")
+        self.assertEqual(self.product.base_price, Decimal("25.00"))
+
+    def test_customers_cannot_edit_products(self):
+        self.client.force_login(self.customer)
+
+        response = self.client.get(self.edit_url())
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_anonymous_users_are_redirected_to_login(self):
+        response = self.client.get(self.edit_url())
+
+        self.assertRedirects(
+            response,
+            f'{reverse("account_login")}?next={self.edit_url()}',
+        )
+
+    def test_unknown_product_returns_404(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            reverse("products:edit", kwargs={"slug": "missing"})
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_product_without_a_promotion_offers_to_create_one(self):
+        self.promotion.delete()
+        self.client.force_login(self.staff)
+
+        response = self.client.get(self.edit_url())
+
+        self.assertContains(
+            response,
+            f'{reverse("promotions:create")}?product={self.product.pk}',
+        )
+
+
+class ProductAvailabilityTests(TestCase):
+    def test_available_quantity_subtracts_the_holds(self):
+        product = Product.objects.create(
+            title="Classic Tee",
+            base_price=Decimal("25.00"),
+            stock_quantity=5,
+            reserved_quantity=2,
+        )
+
+        self.assertEqual(product.available_quantity, 3)
+        self.assertFalse(product.is_out_of_stock)
+
+    def test_a_fully_held_product_is_out_of_stock(self):
+        product = Product.objects.create(
+            title="Classic Tee",
+            base_price=Decimal("25.00"),
+            stock_quantity=2,
+            reserved_quantity=2,
+        )
+
+        self.assertEqual(product.available_quantity, 0)
+        self.assertTrue(product.is_out_of_stock)

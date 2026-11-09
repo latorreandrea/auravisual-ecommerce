@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Staff tools | AuraVisual Ecommerce{% endblock %}
+{% block meta_description %}Staff hub: the shop counters and the shortcuts to manage products, promotions and orders.{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/staff.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<section class="staff-page">
+    <header class="staff-header">
+        <div>
+            <p class="staff-eyebrow">Staff tools</p>
+            <h2>Shop overview</h2>
+            <p>Read-only counters for the shop. Every change happens in the pages listed under Actions.</p>
+        </div>
+    </header>
+
+    {# Row 1: the overview, with no form and no write action. #}
+    <section class="staff-block" aria-labelledby="staff-overview-title">
+        <h3 class="staff-block-title" id="staff-overview-title">Overview</h3>
+        <div class="staff-stats">
+            <a class="staff-stat is-link" href="{% url 'products:list' %}">
+                <span class="staff-stat-value">{{ product_count }}</span>
+                <span class="staff-stat-label">Products</span>
+                <span class="staff-stat-hint">Open the catalogue</span>
+            </a>
+            <div class="staff-stat">
+                <span class="staff-stat-value">{{ active_product_count }}</span>
+                <span class="staff-stat-label">Published</span>
+                <span class="staff-stat-hint">
+                    {% if active_product_count == product_count %}All products are visible{% else %}Some products are hidden{% endif %}
+                </span>
+            </div>
+            <div class="staff-stat{% if out_of_stock_count %} is-alert{% endif %}">
+                <span class="staff-stat-value">{{ out_of_stock_count }}</span>
+                <span class="staff-stat-label">Out of stock</span>
+                <span class="staff-stat-hint">Stock covered by holds</span>
+            </div>
+            <a class="staff-stat is-link" href="{% url 'promotions:list' %}">
+                <span class="staff-stat-value">{{ active_promotion_count }}/{{ promotion_count }}</span>
+                <span class="staff-stat-label">Active promotions</span>
+                <span class="staff-stat-hint">Open the promotion manager</span>
+            </a>
+            <a class="staff-stat is-link" href="{% url 'admin:orders_order_changelist' %}">
+                <span class="staff-stat-value">{{ order_count }}</span>
+                <span class="staff-stat-label">Orders</span>
+                <span class="staff-stat-hint">Open the orders in admin</span>
+            </a>
+        </div>
+
+        <div class="staff-card">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                <h4 class="staff-card-title mb-0">Latest promotions</h4>
+                <a href="{% url 'promotions:list' %}" class="small">All promotions</a>
+            </div>
+            {% if recent_promotions %}
+            <ul class="list-unstyled staff-list mb-0">
+                {% for promotion in recent_promotions %}
+                <li>
+                    <div>
+                        <a href="{% url 'promotions:detail' promotion.pk %}">{{ promotion.name }}</a>
+                        <span class="d-block small text-muted">
+                            {{ promotion.product.title }} &middot; {{ promotion.tiers_summary|default:"No breaks yet" }}
+                        </span>
+                    </div>
+                    <span class="staff-badge {% if promotion.is_active %}staff-badge-active{% else %}staff-badge-inactive{% endif %}">
+                        {{ promotion.is_active|yesno:"Active,Inactive" }}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="mb-0">No promotion yet: every product sells at its base price.</p>
+            {% endif %}
+        </div>
+    </section>
+
+
+    {# Row 2: one card per area of the shop, each pointing at the page that owns it. #}
+    <section class="staff-block" aria-labelledby="staff-actions-title">
+        <h3 class="staff-block-title" id="staff-actions-title">Actions</h3>
+        <div class="staff-action-grid">
+            <article class="staff-action-card">
+                <span class="staff-action-icon"><i class="bi bi-box-seam" aria-hidden="true"></i></span>
+                <h4 class="staff-action-title">Products</h4>
+                <p class="staff-action-text">
+                    Create a product with its sides, then edit price, stock and visibility from
+                    the catalogue. The products hidden from the shop stay reachable there.
+                </p>
+                <div class="staff-action-buttons">
+                    <a href="{% url 'products:list' %}" class="btn-get-started">
+                        <i class="bi bi-grid me-2" aria-hidden="true"></i>Open product list
+                    </a>
+                    <a href="{% url 'products:create' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>Create product
+                    </a>
+                </div>
+            </article>
+
+            <article class="staff-action-card">
+                <span class="staff-action-icon"><i class="bi bi-tags" aria-hidden="true"></i></span>
+                <h4 class="staff-action-title">Promotions</h4>
+                <p class="staff-action-text">
+                    Build the quantity breaks of a product, check the unit price each break
+                    gives and delete a promotion to go back to the base price.
+                </p>
+                <div class="staff-action-buttons">
+                    <a href="{% url 'promotions:list' %}" class="btn-get-started">
+                        <i class="bi bi-list-ul me-2" aria-hidden="true"></i>Open promotions
+                    </a>
+                    <a href="{% url 'promotions:create' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>New promotion
+                    </a>
+                </div>
+            </article>
+
+            <article class="staff-action-card">
+                <span class="staff-action-icon"><i class="bi bi-receipt" aria-hidden="true"></i></span>
+                <h4 class="staff-action-title">Orders</h4>
+                <p class="staff-action-text">
+                    Read every order with its units, total and payment status, and release the
+                    stock of an abandoned checkout.
+                </p>
+                <div class="staff-action-buttons">
+                    <a href="{% url 'admin:orders_order_changelist' %}" class="btn-get-started">
+                        <i class="bi bi-receipt me-2" aria-hidden="true"></i>Open orders
+                    </a>
+                </div>
+            </article>
+
+            <article class="staff-action-card">
+                <span class="staff-action-icon"><i class="bi bi-gear" aria-hidden="true"></i></span>
+                <h4 class="staff-action-title">Site admin</h4>
+                <p class="staff-action-text">
+                    Django admin for what the storefront pages do not cover: mockups,
+                    printable areas, customers and the raw promotion records.
+                </p>
+                <div class="staff-action-buttons">
+                    <a href="{% url 'admin:products_product_changelist' %}" class="btn-get-started">
+                        <i class="bi bi-sliders me-2" aria-hidden="true"></i>Sides &amp; mockups
+                    </a>
+                    <a href="{% url 'admin:index' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-gear me-2" aria-hidden="true"></i>Django admin
+                    </a>
+                </div>
+            </article>
+        </div>
+    </section>
+</section>
+{% endblock %}
+

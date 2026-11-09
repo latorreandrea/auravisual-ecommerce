@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}New promotion | Staff tools | AuraVisual Ecommerce{% endblock %}
+{% block meta_description %}Staff page to create a quantity price promotion.{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/staff.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/promotion-formset.js' %}?v={{ ASSET_VERSION }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<section class="staff-page">
+    <header class="staff-header">
+        <div>
+            <p class="staff-eyebrow">
+                <a href="{% url 'promotions:list' %}">Promotions</a> / New
+            </p>
+            <h2>New promotion</h2>
+            <p>Pick the product, then add the quantity breaks customers should see.</p>
+        </div>
+        <div class="staff-actions">
+            <a href="{% url 'promotions:list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-2"></i>All promotions
+            </a>
+        </div>
+    </header>
+
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% include "promotions/_form.html" %}
+        <div class="staff-form-actions">
+            <button type="submit" class="btn-get-started">
+                <i class="bi bi-check2 me-2"></i>Create promotion
+            </button>
+            <a href="{% url 'promotions:list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

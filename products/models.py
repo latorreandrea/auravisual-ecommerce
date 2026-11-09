@@ -36,13 +36,30 @@ class Product(models.Model):
     slug = models.SlugField(max_length=140, unique=True, blank=True)
     description = models.TextField(blank=True)
     base_price = models.DecimalField(max_digits=10, decimal_places=2)
+    # Physical units on the shelf. ``reserved_quantity`` counts the units held
+    # by orders that are still waiting for their payment, so a customer can only
+    # buy what is actually free: ``available_quantity`` is the number the
+    # catalogue, the cart and the checkout all use.
     stock_quantity = models.PositiveIntegerField(default=0)
+    reserved_quantity = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            "Units held by orders that are waiting for payment. "
+            "Managed by the checkout: do not edit it by hand."
+        ),
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ("title",)
+        constraints = (
+            models.CheckConstraint(
+                condition=models.Q(reserved_quantity__lte=models.F("stock_quantity")),
+                name="product_reserved_lte_stock",
+            ),
+        )
 
     def __str__(self):
         return self.title
@@ -73,6 +90,16 @@ class Product(models.Model):
     @property
     def has_customizable_sides(self):
         return any(view.is_customizable for view in self.views.all())
+
+    @property
+    def available_quantity(self):
+        """Units a customer can buy right now (stock minus pending holds)."""
+
+        return max(self.stock_quantity - self.reserved_quantity, 0)
+
+    @property
+    def is_out_of_stock(self):
+        return self.available_quantity < 1
 
 
 class ProductView(models.Model):

@@ -1,0 +1,33 @@
+{% comment %}
+One price break row of the ladder formset.
+
+Rendered for every bound form and once more inside the ``<template>`` used by
+static/js/promotion-formset.js to add a break: the ``__prefix__`` placeholder in
+that copy is replaced with the next form index by the script.
+{% endcomment %}
+<tr class="tier-row">
+    {% for hidden in tier_form.hidden_fields %}{{ hidden }}{% endfor %}
+    <td>
+        <label class="visually-hidden" for="{{ tier_form.quantity.id_for_label }}">Units</label>
+        {{ tier_form.quantity }}
+        {% for error in tier_form.quantity.errors %}
+        <p class="text-danger small mb-0">{{ error }}</p>
+        {% endfor %}
+    </td>
+    <td>
+        <label class="visually-hidden" for="{{ tier_form.price.id_for_label }}">Total price in EUR</label>
+        {{ tier_form.price }}
+        {% for error in tier_form.price.errors %}
+        <p class="text-danger small mb-0">{{ error }}</p>
+        {% endfor %}
+    </td>
+    <td class="text-end">
+        {% if tier_form.DELETE %}
+        <span class="d-none">{{ tier_form.DELETE }}</span>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-tier-delete>
+            <i class="bi bi-trash" aria-hidden="true"></i>
+            <span class="visually-hidden">Remove this break</span>
+        </button>
+        {% endif %}
+    </td>
+</tr>

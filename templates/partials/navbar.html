@@ -14,8 +14,8 @@
         {% with app=request.resolver_match.app_name url_name=request.resolver_match.url_name %}
         <nav id="navbar" class="navbar">
             <ul>
-                <li><a class="nav-link {% if app == 'home' %}active{% endif %}" href="{% url 'home:index' %}" aria-label="Go to home page">Home</a></li>
-                <li><a class="nav-link {% if app == 'products' %}active{% endif %}" href="{% url 'products:list' %}" aria-label="Browse products">Products</a></li>
+                <li><a class="nav-link {% if app == 'home' and url_name == 'index' %}active{% endif %}" href="{% url 'home:index' %}" aria-label="Go to home page">Home</a></li>
+                <li><a class="nav-link {% if app == 'products' or app == 'promotions' %}active{% endif %}" href="{% url 'products:list' %}" aria-label="Browse products">Products</a></li>
                 <li><a class="nav-link" href="{% url 'home:index' %}#how-it-works" aria-label="See how customization works">How it works</a></li>
                 <li><a class="nav-link" href="{% url 'home:index' %}#file-guide" aria-label="Read the artwork file guide">File guide</a></li>
                 {% if user.is_authenticated %}
@@ -23,8 +23,8 @@
                 {% endif %}
                 {% if user.is_staff %}
                 <li>
-                    <a class="nav-link nav-create-link {% if url_name == 'create' %}active{% endif %}" href="{% url 'products:create' %}" aria-label="Create a new product">
-                        <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Create product
+                    <a class="nav-link nav-staff-link {% if app == 'home' and url_name == 'staff' %}active{% endif %}" href="{% url 'home:staff' %}" aria-label="Open the staff tools">
+                        <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>Staff tools
                     </a>
                 </li>
                 {% endif %}

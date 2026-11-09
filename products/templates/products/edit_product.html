@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Edit {{ product.title }} | Staff tools | AuraVisual Ecommerce{% endblock %}
+{% block meta_description %}Staff page to edit a product of the AuraVisual catalogue.{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/staff.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<section class="staff-page">
+    <header class="staff-header">
+        <div>
+            <p class="staff-eyebrow">
+                <a href="{% url 'home:staff' %}">Staff tools</a> /
+                <a href="{% url 'products:list' %}">Catalogue</a>
+            </p>
+            <h2>{{ product.title }}</h2>
+            <p>
+                &euro; {{ product.base_price }} &middot;
+                {{ product.stock_quantity }} in stock
+                {% if product.reserved_quantity %}&middot; {{ product.reserved_quantity }} held{% endif %}
+                &middot; {{ side_count }} side{{ side_count|pluralize }}
+            </p>
+        </div>
+        <div class="staff-actions">
+            <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-2"></i>Back to catalogue
+            </a>
+            {% if product.is_active %}
+            <a href="{{ product.get_absolute_url }}" class="btn btn-outline-secondary">
+                <i class="bi bi-box-arrow-up-right me-2"></i>View product
+            </a>
+            {% else %}
+            <span class="staff-badge staff-badge-inactive">Hidden from the shop</span>
+            {% endif %}
+        </div>
+    </header>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="staff-card">
+                <h3 class="staff-card-title">Product details</h3>
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger py-2" role="alert">
+                        {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+                    </div>
+                    {% endif %}
+                    {% for field in form %}
+                    <div class="mb-3{% if field.name == 'is_active' %} form-check{% endif %}">
+                        {% if field.name == 'is_active' %}
+                        {{ field }}
+                        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {% else %}
+                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% endif %}
+                        {% if field.help_text %}
+                        <p class="form-text mb-0">{{ field.help_text }}</p>
+                        {% endif %}
+                        {% for error in field.errors %}
+                        <p class="text-danger small mb-0">{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                    <div class="staff-form-actions">
+                        <button type="submit" class="btn-get-started">
+                            <i class="bi bi-check2 me-2"></i>Save changes
+                        </button>
+                        <a href="{% url 'products:list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="staff-card mb-4">
+                <h3 class="staff-card-title">Price promotion</h3>
+                {% if promotion %}
+                <p class="mb-2">
+                    <span class="staff-badge {% if promotion.is_active %}staff-badge-active{% else %}staff-badge-inactive{% endif %}">
+                        {{ promotion.is_active|yesno:"Active,Inactive" }}
+                    </span>
+                    {{ promotion.name }}
+                </p>
+                <p class="small mb-3">{{ promotion.tiers_summary }}</p>
+                <a href="{% url 'promotions:detail' promotion.pk %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-pencil-square me-2"></i>Edit promotion
+                </a>
+                {% else %}
+                <p class="small mb-3">
+                    This product sells at its base price: no quantity break is published.
+                </p>
+                <a href="{% url 'promotions:create' %}?product={{ product.pk }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-plus-circle me-2"></i>Create promotion
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="staff-card">
+                <h3 class="staff-card-title">Sides and printable areas</h3>
+                <p class="small mb-3">
+                    Mockups, printable areas and the customization limits are managed in the
+                    Django admin, because they need the uploaded artwork to be checked visually.
+                </p>
+                <a href="{% url 'admin:products_product_change' product.pk %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-sliders me-2"></i>Open in admin
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

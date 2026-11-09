@@ -19,14 +19,31 @@
     <div class="row g-3">
         {% for order in orders %}
         <div class="col-12">
-            <div class="info-card d-flex flex-wrap align-items-center justify-content-between gap-3">
-                <div>
-                    <h3 class="mb-1">Order #{{ order.id }}</h3>
-                    <p class="mb-0">Placed on {{ order.created_at|date:"d/m/Y H:i" }}</p>
+            <div class="info-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <div>
+                        <h3 class="mb-1">Order #{{ order.id }}</h3>
+                        <p class="mb-0">Placed on {{ order.created_at|date:"d/m/Y H:i" }}</p>
+                        <p class="mb-0 small">
+                            {{ order.item_count }} unit{{ order.item_count|pluralize }}
+                            &middot; Total &euro; {{ order.total_amount }}
+                            &middot; {{ order.get_payment_status_display }}
+                        </p>
+                    </div>
+                    <span class="product-meta">
+                        <i class="bi bi-truck me-2"></i>{{ order.get_status_display }}
+                    </span>
                 </div>
-                <span class="product-meta">
-                    <i class="bi bi-truck me-2"></i>{{ order.get_status_display }}
-                </span>
+                <ul class="list-unstyled mt-3 mb-0 small">
+                    {% for item in order.cart.items.all %}
+                    <li>
+                        {{ item.product.title }} &times; {{ item.quantity }}
+                    </li>
+                    {% endfor %}
+                </ul>
+                <p class="mb-0 small text-muted mt-2">
+                    <i class="bi bi-geo-alt me-1"></i>{{ order.shipping_address }}
+                </p>
             </div>
         </div>
         {% endfor %}

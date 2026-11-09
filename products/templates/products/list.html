@@ -9,6 +9,13 @@
 {% block twitter_title %}Products | AuraVisual Ecommerce{% endblock %}
 {% block twitter_description %}Browse the AuraVisual Ecommerce catalogue: NFC cards, QR stands and customizable physical products.{% endblock %}
 
+{% block extra_css %}
+{% if user.is_staff %}
+{# Only the shopkeeper downloads the staff stylesheet: the toolbar on the cards. #}
+<link href="{% static 'css/staff.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <section>
     <div class="section-title">
@@ -17,11 +24,20 @@
     </div>
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-        <div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
             {% if user.is_staff %}
             <a href="{% url 'products:create' %}" class="btn btn-outline-secondary" aria-label="Create a new product">
                 <i class="bi bi-plus-circle me-2"></i>Create product
             </a>
+            {% if show_hidden %}
+            <a href="{% url 'products:list' %}" class="btn btn-outline-secondary" aria-label="Show the published products">
+                <i class="bi bi-eye me-2"></i>Show published products
+            </a>
+            {% else %}
+            <a href="{% url 'products:list' %}?status=hidden" class="btn btn-outline-secondary" aria-label="Show only the products hidden from the shop">
+                <i class="bi bi-eye-slash me-2"></i>Show hidden products ({{ hidden_product_count }})
+            </a>
+            {% endif %}
             {% endif %}
         </div>
         <a href="{% url 'cart:detail' %}" class="btn-get-started" aria-label="Go to your cart">
@@ -31,7 +47,12 @@
 
     {% if products %}
     <p class="list-summary">
+        {% if show_hidden %}
+        {{ total_products }} hidden {{ total_products|pluralize:"product,products" }} &middot;
+        <a href="{% url 'products:list' %}">back to the published catalogue</a>
+        {% else %}
         {{ total_products }} active {{ total_products|pluralize:"product,products" }} in the catalogue
+        {% endif %}
     </p>
     <div class="row g-4">
         {% for product in products %}
@@ -98,7 +119,8 @@
                        aria-live="polite"
                        aria-atomic="true"
                        data-gallery-status></p>
-                    {% endif %}
+                </div>
+                {% endif %}
                 {% else %}
                 <div class="product-card-gallery is-placeholder" aria-hidden="true">
                     <div class="product-gallery-placeholder">
@@ -107,21 +129,71 @@
                     </div>
                 </div>
                 {% endif %}
+                {% if user.is_staff %}
+                {# The shopkeeper renames, prices and publishes from the edit page. #}
+                <h3><a href="{% url 'products:edit' product.slug %}">{{ product.title }}</a></h3>
+                {% else %}
                 <h3>{{ product.title }}</h3>
+                {% endif %}
                 <p class="mb-3">{{ product.short_description|default:product.description|default:"Description not available." }}</p>
+                {% if user.is_staff and not product.is_active %}
+                <p class="mb-2">
+                    <span class="staff-badge staff-badge-inactive">Hidden from the shop</span>
+                </p>
+                {% endif %}
                 <p class="product-price mb-3">&euro; {{ product.base_price }}</p>
                 {% if product.promotion_teaser %}
                 <p class="product-meta mb-3">
                     <i class="bi bi-tags me-2" aria-hidden="true"></i>{{ product.promotion_name }}: {{ product.promotion_teaser }}
                 </p>
                 {% endif %}
+                {% if not user.is_staff %}
                 <p class="mb-4">
-                    <span class="product-meta{% if product.stock_quantity < 1 %} is-empty{% endif %}">
-                        <i class="bi bi-box-seam me-2"></i>Availability: {{ product.stock_quantity }}
+                    <span class="product-meta{% if product.available_quantity < 1 %} is-empty{% endif %}">
+                        <i class="bi bi-box-seam me-2"></i>Availability: {{ product.available_quantity }}
                     </span>
                 </p>
+                {% endif %}
+                {% if user.is_staff %}
+                <div class="staff-product-actions">
+                    <p class="staff-product-stock mb-2">
+                        <i class="bi bi-boxes me-2" aria-hidden="true"></i>{{ product.stock_quantity }} on the shelf
+                        {% if product.reserved_quantity %}&middot; {{ product.reserved_quantity }} held{% endif %}
+                    </p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{% url 'products:edit' product.slug %}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>Edit
+                            <span class="visually-hidden">{{ product.title }}</span>
+                        </a>
+                        {% if product.staff_promotion %}
+                        <a href="{% url 'promotions:detail' product.staff_promotion.pk %}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-tags me-2" aria-hidden="true"></i>Promotion
+                            <span class="visually-hidden">{{ product.title }}</span>
+                        </a>
+                        {% else %}
+                        <a href="{% url 'promotions:create' %}?product={{ product.pk }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>Add a promotion
+                            <span class="visually-hidden">{{ product.title }}</span>
+                        </a>
+                        {% endif %}
+                        {% if product.is_active %}
+                        <form action="{% url 'products:deactivate' product.slug %}" method="post" class="mb-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-eye-slash me-2" aria-hidden="true"></i>Hide
+                                <span class="visually-hidden">{{ product.title }} from the shop</span>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
                 <div class="product-card-actions d-grid gap-2">
-                    {% if not product.has_customizable_sides %}
+                    {% if not product.is_active %}
+                    <p class="product-meta mb-0 text-center">
+                        <i class="bi bi-eye-slash me-2"></i>Hidden from the shop: customers cannot see it
+                    </p>
+                    {% elif not product.has_customizable_sides %}
                     <p class="product-meta mb-0 text-center">
                         <i class="bi bi-lock me-2"></i>Sold as shown, no customizable sides
                     </p>
@@ -134,12 +206,14 @@
                         <i class="bi bi-person-plus me-2"></i>Sign in to customize
                     </a>
                     {% endif %}
+                    {% if product.is_active %}
                     <form action="{% url 'cart:add' product.pk %}" method="post" class="mb-0">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-outline-secondary w-100"{% if product.stock_quantity < 1 %} disabled{% endif %}>
+                        <button type="submit" class="btn btn-outline-secondary w-100"{% if product.available_quantity < 1 %} disabled{% endif %}>
                             <i class="bi bi-cart-plus me-2"></i>Add without customization
                         </button>
                     </form>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -147,7 +221,13 @@
     </div>
     {% include "partials/pagination.html" %}
     {% else %}
-    <p class="text-center mb-0">No products are available right now.</p>
+    <p class="text-center mb-0">
+        {% if show_hidden %}
+        No product is hidden right now: <a href="{% url 'products:list' %}">back to the published catalogue</a>.
+        {% else %}
+        No products are available right now.
+        {% endif %}
+    </p>
     {% endif %}
 </section>
 {% endblock %}

@@ -104,6 +104,11 @@ def _build_cart_summary(session_cart, user=None):
                 "promotion_name": pricing.promotion.name if pricing.promotion else "",
                 "promotion_label": pricing.promotion_label,
                 "extra_units": pricing.extra_units,
+                # Stock: the cart cannot promise more units than are actually
+                # free (physical stock minus the holds of pending payments).
+                "available_quantity": product.available_quantity,
+                "is_out_of_stock": product.is_out_of_stock,
+                "exceeds_stock": line["quantity"] > product.available_quantity,
                 "draft": draft,
                 "draft_id": str(draft.pk) if draft else None,
                 "draft_missing": draft_missing,
@@ -123,6 +128,9 @@ def _build_cart_summary(session_cart, user=None):
         "discount_total": subtotal - total,
         "total": total,
         "count": sum(item["quantity"] for item in items),
+        # One flag for the cart page and the checkout button: a cart that asks
+        # for more units than are free cannot be checked out.
+        "has_stock_issue": any(item["exceeds_stock"] for item in items),
     }
 
 

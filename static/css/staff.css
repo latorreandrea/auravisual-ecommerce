@@ -1,0 +1,442 @@
+/* --- Staff tools ----------------------------------------------------------
+   Shared by the staff hub (/staff/), the promotion manager and the product
+   edit page. The palette matches static/css/style.css: deep blue for text,
+   #1acc8d for the primary action. */
+
+.staff-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Two explicit rows: the read-only overview first, the action cards second. */
+.staff-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.staff-block-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(14, 58, 82, 0.55);
+}
+
+.staff-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.staff-header h2 {
+  margin: 4px 0 6px;
+  font-size: clamp(1.7rem, 2.4vw, 2.3rem);
+  font-weight: 700;
+  color: rgb(14, 58, 82);
+}
+
+.staff-header p {
+  margin: 0;
+  color: rgba(14, 58, 82, 0.78);
+}
+
+.staff-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #14926a;
+}
+
+.staff-eyebrow a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.staff-eyebrow a:hover,
+.staff-eyebrow a:focus {
+  text-decoration: underline;
+}
+
+.staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.staff-actions .btn,
+.staff-form-actions .btn {
+  border-radius: 999px;
+}
+
+/* Stat cards ------------------------------------------------------------- */
+.staff-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.staff-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid rgba(14, 58, 82, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(14, 58, 82, 0.06);
+}
+
+.staff-stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: rgb(14, 58, 82);
+}
+
+.staff-stat-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(14, 58, 82, 0.6);
+}
+
+.staff-stat.is-alert .staff-stat-value {
+  color: #b02a37;
+}
+
+/* A counter that doubles as the shortcut to the page that owns the data. */
+.staff-stat.is-link {
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.staff-stat.is-link:hover,
+.staff-stat.is-link:focus {
+  border-color: rgba(26, 204, 141, 0.45);
+  box-shadow: 0 16px 34px rgba(14, 58, 82, 0.12);
+  transform: translateY(-2px);
+}
+
+.staff-stat.is-link:focus-visible {
+  outline: 2px solid #1acc8d;
+  outline-offset: 2px;
+}
+
+.staff-stat-hint {
+  font-size: 12px;
+  color: rgba(14, 58, 82, 0.5);
+}
+
+.staff-stat.is-link .staff-stat-hint {
+  color: #14926a;
+}
+
+/* Cards, tables, badges -------------------------------------------------- */
+.staff-card {
+  padding: 22px;
+  background: #fff;
+  border: 1px solid rgba(14, 58, 82, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 12px 30px rgba(14, 58, 82, 0.05);
+}
+
+.staff-card.p-0 {
+  padding: 0;
+  overflow: hidden;
+}
+
+.staff-card-title {
+  margin-bottom: 14px;
+  font-size: 18px;
+  font-weight: 700;
+  color: rgb(14, 58, 82);
+}
+
+.staff-card-danger {
+  border-color: rgba(176, 42, 55, 0.25);
+}
+
+.staff-empty {
+  text-align: center;
+}
+
+.staff-table {
+  margin-bottom: 0;
+  color: rgb(14, 58, 82);
+}
+
+.staff-table > thead th {
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(14, 58, 82, 0.62);
+  background: rgba(14, 58, 82, 0.03);
+  border-bottom: 1px solid rgba(14, 58, 82, 0.1);
+}
+
+.staff-table > tbody > tr > td {
+  padding: 14px;
+  vertical-align: middle;
+  border-color: rgba(14, 58, 82, 0.07);
+}
+
+.staff-table > tbody > tr.is-best > td {
+  background: rgba(26, 204, 141, 0.08);
+}
+
+.staff-table-formset > tbody > tr > td {
+  padding: 8px 10px;
+}
+
+/* A break flagged for deletion: dimmed and struck through, still clickable so
+   the same button can undo it before the form is saved. */
+.staff-table-formset > tbody > tr.is-removed > td {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.staff-table a {
+  font-weight: 600;
+  color: rgb(14, 58, 82);
+  text-decoration: none;
+}
+
+.staff-table a:hover,
+.staff-table a:focus {
+  color: #14926a;
+  text-decoration: underline;
+}
+
+.staff-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.staff-badge-active {
+  color: #0f6b4f;
+  background: rgba(26, 204, 141, 0.16);
+}
+
+.staff-badge-inactive {
+  color: #6c757d;
+  background: rgba(108, 117, 125, 0.14);
+}
+
+/* Lists ------------------------------------------------------------------ */
+.staff-list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(14, 58, 82, 0.07);
+}
+
+.staff-list > li:last-child {
+  border-bottom: 0;
+}
+
+.staff-list a {
+  font-weight: 600;
+  color: rgb(14, 58, 82);
+  text-decoration: none;
+}
+
+.staff-list a:hover,
+.staff-list a:focus {
+  color: #14926a;
+  text-decoration: underline;
+}
+
+/* Action cards -----------------------------------------------------------
+   Row 2 of the staff hub: one card per area of the shop. The buttons keep the
+   storefront pill shape but a smaller size, so two of them fit on a card. */
+.staff-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.staff-action-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid rgba(14, 58, 82, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 12px 30px rgba(14, 58, 82, 0.05);
+}
+
+.staff-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  font-size: 18px;
+  color: #14926a;
+  background: rgba(26, 204, 141, 0.14);
+}
+
+.staff-action-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: rgb(14, 58, 82);
+}
+
+.staff-action-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(14, 58, 82, 0.72);
+}
+
+.staff-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.staff-action-buttons .btn,
+.staff-action-buttons .btn-get-started {
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.staff-action-buttons .btn-get-started {
+  padding: 10px 20px;
+}
+
+.staff-action-buttons .btn {
+  padding: 9px 16px;
+}
+
+/* Staff toolbar on a catalogue card (`/shop/` while signed in as staff). The
+   catalogue is not a `.staff-page`, so these rules stand on their own. */
+.staff-product-actions {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(14, 58, 82, 0.1);
+}
+
+.staff-product-stock {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(14, 58, 82, 0.62);
+}
+
+.staff-product-actions .btn {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.staff-product-actions + .product-card-actions {
+  margin-top: 14px;
+}
+
+.product-card h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.product-card h3 a:hover,
+.product-card h3 a:focus {
+  color: #14926a;
+  text-decoration: underline;
+}
+
+/* Filters ---------------------------------------------------------------- */
+.staff-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.staff-filters .form-control {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+.staff-filters .form-select {
+  flex: 0 1 190px;
+}
+
+/* Forms ------------------------------------------------------------------ */
+.staff-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.staff-page .form-control,
+.staff-page .form-select {
+  border-color: rgba(14, 58, 82, 0.18);
+}
+
+.staff-page .form-control:focus,
+.staff-page .form-select:focus {
+  border-color: #1acc8d;
+  box-shadow: 0 0 0 0.2rem rgba(26, 204, 141, 0.2);
+}
+
+@media (max-width: 767px) {
+  .staff-header {
+    align-items: flex-start;
+  }
+
+  .staff-card {
+    padding: 18px;
+  }
+
+  .staff-action-card {
+    padding: 18px;
+  }
+
+  .staff-action-buttons .btn,
+  .staff-action-buttons .btn-get-started {
+    flex: 1 1 auto;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-stat.is-link {
+    transition: none;
+  }
+
+  .staff-stat.is-link:hover,
+  .staff-stat.is-link:focus {
+    transform: none;
+  }
+}

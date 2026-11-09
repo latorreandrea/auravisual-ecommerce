@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from auravisual_ecommerce.pagination import paginate
+from promotions.models import Promotion
 from promotions.services import attach_promotion_badges
 
 from .forms import (
@@ -17,6 +18,7 @@ from .forms import (
     MAX_PRODUCT_VIEWS,
     SideAreaForm,
     ProductCreateForm,
+    ProductEditForm,
     ProductViewFormSet,
 )
 from .models import Product, ProductView
@@ -62,31 +64,73 @@ def _attach_gallery_views(products):
 
 
 def product_list(request):
-    queryset = (
-        Product.objects.filter(is_active=True)
-        .prefetch_related(
-            Prefetch(
-                "views",
-                queryset=ProductView.objects.order_by("sort_order", "id"),
-            )
+    """The catalogue, with the staff actions grafted on for the shopkeeper.
+
+    Customers always get the published products, whatever the query string says.
+    Staff can flip the same page to the hidden products (``?status=hidden``) and
+    get edit/visibility shortcuts on every card, so a deactivated product can be
+    fixed and published again without leaving the shop.
+    """
+
+    is_staff = request.user.is_staff
+    show_hidden = is_staff and request.GET.get("status") == "hidden"
+
+    if show_hidden:
+        queryset = Product.objects.filter(is_active=False)
+    else:
+        queryset = Product.objects.filter(is_active=True)
+    queryset = queryset.prefetch_related(
+        Prefetch(
+            "views",
+            queryset=ProductView.objects.order_by("sort_order", "id"),
         )
-        .order_by("title")
-    )
+    ).order_by("title")
+
     # Pagination runs in SQL (one COUNT plus a LIMIT/OFFSET page), so the
     # catalogue never loads the whole table: see auravisual_ecommerce.pagination.
     page_obj, page_context = paginate(request, queryset, settings.PRODUCTS_PAGE_SIZE)
     products = _attach_gallery_views(list(page_obj.object_list))
     # One query for every promotion on the page: cards show the best break.
     attach_promotion_badges(products)
-    return render(
-        request,
-        "products/list.html",
-        {
-            "products": products,
-            "total_products": page_obj.paginator.count,
-            **page_context,
-        },
-    )
+
+    context = {
+        "products": products,
+        "total_products": page_obj.paginator.count,
+        **page_context,
+    }
+    if is_staff:
+        # The staff map is attached in place (one query for the whole page).
+        _attach_staff_promotions(products)
+        context.update(
+            {
+                "show_hidden": show_hidden,
+                "hidden_product_count": Product.objects.filter(
+                    is_active=False
+                ).count(),
+            }
+        )
+    return render(request, "products/list.html", context)
+
+
+def _attach_staff_promotions(products):
+    """Attach the promotion of each card, one query for the whole page.
+
+    ``attach_promotion_badges`` only exposes the badge text of the best *active*
+    promotion; the staff actions also need the record (and a link) for a product
+    whose promotion is inactive, so the map is built here instead.
+    """
+
+    promotions_by_product = {}
+    for promotion in Promotion.objects.filter(
+        product_id__in=[product.pk for product in products]
+    ).order_by("pk"):
+        current = promotions_by_product.get(promotion.product_id)
+        if current is None or (promotion.is_active and not current.is_active):
+            promotions_by_product[promotion.product_id] = promotion
+
+    for product in products:
+        product.staff_promotion = promotions_by_product.get(product.pk)
+    return products
 
 
 @login_required
@@ -109,6 +153,50 @@ def deactivate_product(request, slug):
         messages.success(request, f'"{product.title}" is already inactive.')
 
     return redirect("products:list")
+
+
+@login_required
+def edit_product(request, slug):
+    """Staff page: edit the product details that are not part of the wizard.
+
+    Sides and printable areas stay in the wizard (on creation) and in the Django
+    admin, so this page only touches the fields a shopkeeper changes day to day:
+    title, description, price, stock and visibility.
+    """
+
+    if not request.user.is_staff:
+        raise PermissionDenied
+
+    product = get_object_or_404(
+        Product.objects.prefetch_related("views", "promotions__tiers"),
+        slug=slug,
+    )
+
+    if request.method == "POST":
+        form = ProductEditForm(request.POST, instance=product)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'"{product.title}" was updated.')
+            return redirect("products:list")
+    else:
+        form = ProductEditForm(instance=product)
+
+    promotions = list(product.promotions.all())
+    promotion = next(
+        (candidate for candidate in promotions if candidate.is_active),
+        promotions[0] if promotions else None,
+    )
+
+    return render(
+        request,
+        "products/edit_product.html",
+        {
+            "product": product,
+            "form": form,
+            "promotion": promotion,
+            "side_count": len(product.views.all()),
+        },
+    )
 
 
 @login_required

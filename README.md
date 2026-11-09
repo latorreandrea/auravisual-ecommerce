@@ -21,8 +21,9 @@ The core goal is to let customers personalize the products before purchasing the
 - [Usage](#usage)
 - [Authentication](#authentication)
 - [Customization Workflow](#customization-workflow)
-- [Cart and Orders](#cart-and-orders)
+- [Cart, Checkout and Stock](#cart-checkout-and-stock)
 - [Promotions](#promotions)
+- [Staff tools](#staff-tools)
 - [Product Catalogue Side Gallery](#product-catalogue-side-gallery)
 - [Frontend Structure](#frontend-structure)
 - [API Roadmap (Django Ninja + Stripe)](#api-roadmap-django-ninja--stripe)
@@ -82,17 +83,24 @@ Customers can:
 - **Cart app** for cart management and global cart context.
 - **Promotions app** for staff-defined quantity bundles on a single product:
   - a promotion has a name and a ladder of price breaks (e.g. 5 units for
-    EUR 40, 10 units for EUR 70), all managed from the Admin;
+    EUR 40, 10 units for EUR 70), managed from the Admin **or** from the staff
+    pages at `/promotions/`;
   - a break covers its own units at the break price, while the units above it
     stay at the product base price: with a EUR 10 base price and the ladder
     above, 7 units cost EUR 60 (5 for EUR 40 + 2 × EUR 10) instead of EUR 70;
   - the cheapest break wins, inactive promotions are ignored everywhere, and
     every price comes from one shared pricing service, so the cart, the
     catalogue and the home page can never disagree.
-- **Orders app** for checkout domain and order state management:
-  - `Order received`
-  - `Being prepared`
-  - `Shipped`
+- **Orders app** for checkout and order state management:
+  - in-app checkout at `/orders/checkout/` (shipping address + order summary);
+  - fulfilment states: `Order received`, `Being prepared`, `Shipped`;
+  - payment states: `Awaiting payment`, `Paid`, `Payment failed`, `Refunded`;
+  - stock states: `No stock taken`, `Stock reserved`, `Stock committed`,
+    `Reservation released` (see [Cart, Checkout and Stock](#cart-checkout-and-stock)).
+- **Staff tools** (`/staff/`) replacing the old navbar "Create product" link:
+  two rows — read-only counters with the latest promotions, then one action card
+  per area of the shop (products, promotions, orders, site admin) — plus the
+  promotion manager, the product edit page and the staff shortcuts on `/shop/`.
 - **Toast notifications** for success and error feedback across the site.
 
 ---
@@ -101,14 +109,14 @@ Customers can:
 
 ### Apps
 
-- `home`: landing/index views.
-- `products`: product model, listing, stock info.
-- `promotions`: per-product quantity price breaks (staff-defined in the Admin,
-  read-only for the storefront).
+- `home`: landing/index views and the staff hub at `/staff/`.
+- `products`: product model, listing, stock info and the staff product pages.
+- `promotions`: per-product quantity price breaks (staff-defined in the Admin or
+  in `/promotions/`, read-only for the storefront).
 - `accounts`: user profile and shipping address domain.
 - `customization`: customization projects, previews, print archives and the editor.
 - `cart`: cart logic, add/remove/clear actions, global context processor.
-- `orders`: order model and user order list.
+- `orders`: checkout, order model, stock bookkeeping and user order list.
 
 ### Technology Stack
 
@@ -175,6 +183,13 @@ Pagination (`auravisual_ecommerce/pagination.py`):
 | `PRODUCTS_PAGE_SIZE` | `12` | Products per page in `/shop/` |
 | `PROJECTS_PAGE_SIZE` | `8` | Saved projects per page in `/customization/` |
 
+Checkout:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STOCK_RESERVATION_MINUTES` | `30` | How long a stock hold survives before `expire_stock_holds` releases it (used by the Stripe flow) |
+| `STORE_CURRENCY` | `EUR` | ISO 4217 code stored on every order and sent to the payment provider |
+
 Customization uploads and print output:
 
 | Variable | Default | Purpose |
@@ -237,9 +252,10 @@ mode.
    ```bash
    python manage.py createsuperuser
    ```
-2. Sign in as a staff user and choose **Create product** in the navbar, or open
-   `/shop/create/`. The three-step wizard creates the product and one or more
-   product sides, each of which is either customizable or fixed:
+2. Sign in as a staff user and choose **Staff tools** in the navbar (or open
+   `/staff/`), then **Create product**, or open `/shop/create/` directly. The
+   three-step wizard creates the product and one or more product sides, each of
+   which is either customizable or fixed:
    - **Step 1 – Product details:** title, description, base price, stock and
      catalogue visibility.
    - **Step 2 – Sides & print areas:** upload a mockup per side, preview it
@@ -318,7 +334,7 @@ When the redirect comes from a customization URL, the login page:
   directly in the editor or project list after registration.
 
 The navbar and footer only show **Customizations** to authenticated users and
-**Create product** / **Admin** to staff users. Product catalogue and cart
+**Staff tools** / **Admin** to staff users. Product catalogue and cart
 customization buttons send anonymous visitors to the login page with the editor
 URL already stored in `next`.
 
@@ -405,7 +421,7 @@ page.
 
 ---
 
-## Cart and Orders
+## Cart, Checkout and Stock
 
 - Session cart powers add/remove/clear actions.
 - A cart context processor exposes cart summary globally for templates.
@@ -413,6 +429,74 @@ page.
   applied per line (see [Promotions](#promotions)).
 - Success toast includes a scrollable cart preview when cart items exist.
 - Error toast displays failure reason (e.g. stock not available).
+
+### Checkout
+
+`/cart/` links to `/orders/checkout/`, which asks for a shipping address
+(prefilled from the last one; a fresh `ShippingAddress` row per order keeps the
+history intact) and shows the same totals as the cart.
+`orders.services.place_order()` then, inside one transaction:
+
+1. locks the products with `select_for_update()` and checks
+   `Product.available_quantity`;
+2. prices every cart line with `promotions.services.price_line` and stores the
+   total on the order (`total_amount`, `currency`);
+3. creates the order cart (`Cart` + one `CartItem` per product, so the plain
+   product and a customized line of the same product are merged);
+4. reserves and commits the stock.
+
+An empty cart, an unpublished product or a quantity above the free stock raises
+`CheckoutError`: the transaction rolls back, no order is created, the stock is
+untouched and the customer gets one readable message per problem. The cart page
+and the checkout button already know about a shortfall
+(`cart_summary.items[].available_quantity`, `exceeds_stock`,
+`cart_summary.has_stock_issue`), so it is repaired before the payment step.
+
+### Stock: reserve → commit → release
+
+`Product.stock_quantity` is what sits on the shelf, `Product.reserved_quantity`
+is what pending payments hold, and `Product.available_quantity`
+(= `stock_quantity - reserved_quantity`) is the only number the shop sells. A
+`CheckConstraint` keeps `reserved_quantity <= stock_quantity`.
+
+| Step | Effect on the product | When |
+| --- | --- | --- |
+| `reserve_stock(order)` | `reserved_quantity += n`, sets `reserved_until` | Checkout, with a payment provider |
+| `commit_stock(order)` | `reserved_quantity -= n`, `stock_quantity -= n` | Payment confirmed |
+| `release_stock(order)` | `reserved_quantity -= n` | Payment failed, cancelled or hold expired |
+
+The order records the step in `stock_state` (`none`, `reserved`, `committed`,
+`released`) next to `payment_status` (`unpaid`, `paid`, `failed`, `refunded`).
+Both functions are idempotent, so a webhook delivered twice cannot move the stock
+twice.
+
+There is no gateway yet, so `place_order` calls reserve **and** commit in the same
+transaction: the shop behaves exactly like an immediate decrement. Every write is
+an `F()` update guarded inside the `filter()`
+(`stock_quantity__gte`, `reserved_quantity__lte=F("stock_quantity") - n`), so two
+concurrent checkouts can never oversell: the loser updates zero rows and its
+transaction rolls back.
+
+Promotions never change the units: an order of 7 units takes 7 units off the
+shelf and only changes the price (5 for EUR 40 + 2 at the base price).
+
+### Ready for Stripe
+
+Only the second call has to move when a provider is wired in:
+
+1. `POST /orders/checkout/` reserves the units (`reserve_stock`), sets
+   `payment_status=unpaid` and `stripe_payment_intent_id`, and redirects to the
+   provider page — `place_order` will stop before `commit_stock`;
+2. the signed webhook calls `commit_stock(order)` and sets
+   `payment_status=paid`;
+3. a failed/expired payment calls `release_stock(order)` and sets `failed`;
+4. `python manage.py expire_stock_holds [--dry-run]` (cron or Celery beat) frees
+   every hold older than `STOCK_RESERVATION_MINUTES` and marks the unpaid order
+   `failed`.
+
+Because the order snapshots `total_amount` and `currency`, the amount sent to
+Stripe is the one the customer saw, even if a price or a promotion changed in
+between.
 
 ---
 
@@ -444,7 +528,8 @@ Two cart lines of 4 units each are priced separately and never reach the
 ### Admin validation
 
 The ladder is validated as a whole (`Promotion.validate_tiers`, shared by the
-Admin inline), so a promotion cannot be saved when:
+Admin inline and by the staff pages through `promotions/forms.py`), so a
+promotion cannot be saved when:
 
 - it has no breaks, or two breaks for the same quantity (also a
   `UniqueConstraint` on `promotion` + `quantity`);
@@ -470,11 +555,91 @@ links to the promotion page, where the breaks are edited.
 prefetched), `price_line()` (one line, returns a `LinePricing` dataclass),
 `best_break()` and `attach_promotion_badges()` (catalogue and home cards).
 
+### Staff pages
+
+`/promotions/` is the day-to-day manager, for staff only (`login_required` plus
+an `is_staff` check, exactly like `products.views`):
+
+| Route | What it does |
+| --- | --- |
+| `GET /promotions/` | every promotion with product, ladder, best unit price and status; `?q=` searches the promotion and product name, `?status=active\|inactive\|all` filters |
+| `GET/POST /promotions/create/` | new promotion + ladder; `?product=<id>` prefills the product (used by the catalogue cards and the product edit page) |
+| `GET/POST /promotions/<id>/` | edit the promotion and its breaks, see the saved ladder with the saving of each break, delete dialog |
+| `POST /promotions/<id>/delete/` | deletes the promotion; the product goes back to its base price |
+
+`promotions/forms.py` holds the shared pieces: `PromotionTierForm` (used by the
+Admin inline), `PromotionTierFormSet` (the ladder validation, also used by the
+Admin), `StaffPromotionTierForm` (the same break plus Bootstrap classes) and
+`PromotionTierStoreFormSet` (`extra=1`, `can_delete=True`). The view validates the
+promotion form first, because the ladder is compared against the product base
+price of the *selected* product, then saves both in one transaction.
+
+`static/js/promotion-formset.js` adds a break by cloning the `<template>` rendered
+from `tier_formset.empty_form` and flags a saved break for deletion without
+renumbering the remaining rows; emptying a fresh row is enough to ignore it, so
+the page also works without JavaScript.
+
 ### Not implemented yet
 
-Checkout snapshots (orders store no price of their own), percentage discounts,
-coupon codes, cross-product or category promotions, minimum-cart thresholds and
-validity windows (start/end dates).
+Percentage discounts, coupon codes, cross-product or category promotions,
+minimum-cart thresholds and validity windows (start/end dates). Promotions allow
+one row per product: a second promotion for the same product is accepted by the
+model but only the cheapest active one is used.
+
+---
+
+## Staff tools
+
+`/staff/` is the staff hub and replaces the old navbar "Create product" shortcut:
+the navbar pill, the footer link and the home hero now say **Staff tools** and
+point here. The page is read-only and split in two rows:
+
+- **Overview** (row 1): five counters — products, published, out of stock
+  (`stock_quantity <= reserved_quantity`), active/total promotions and orders —
+  plus the five most recently updated promotions. The counters that map to a page
+  (products, promotions, orders) are their own shortcut;
+- **Actions** (row 2): one card per area of the shop, each with the button(s) that
+  own the data:
+  - *Products* → `/shop/` (list, where the staff actions live) and `/shop/create/`;
+  - *Promotions* → `/promotions/` and `/promotions/create/`;
+  - *Orders* → the admin order changelist;
+  - *Site admin* → the admin product changelist (mockups and printable areas) and
+    the admin index.
+
+The catalogue itself is the staff workspace, so the shortcuts live next to the
+products they change (`/shop/`, signed in as staff):
+
+- the card title links to `/shop/<slug>/edit/`;
+- a toolbar per card: `stock_quantity` on the shelf plus the held units, **Edit**,
+  **Promotion** (or **Add a promotion**, opening `/promotions/create/?product=<id>`
+  with the product already filled) and **Hide** (POST to
+  `/shop/<slug>/deactivate/`, shown only while the product is published);
+- a **Show hidden products (N)** toggle switches the same page to the deactivated
+  products (`?status=hidden`), where each card carries the **Hidden** badge, the
+  edit/promotion actions and no customer call to action; **Show published
+  products** goes back. Page links keep the filter, so paging through the hidden
+  products works. Customers never see the toggle: `?status=` is ignored, so the
+  hidden products stay invisible to them.
+
+| Route | Page |
+| --- | --- |
+| `GET /staff/` | staff hub (`home:staff`) |
+| `GET /shop/` | catalogue; staff toolbar, plus `?status=hidden` for the hidden products |
+| `GET /shop/<slug>/edit/` | product edit (`products:edit`) |
+| `GET /promotions/` · `/promotions/create/` · `/promotions/<id>/` | promotion manager |
+| `GET /shop/create/` | three-step product wizard (unchanged) |
+| `POST /shop/<slug>/deactivate/` | soft delete (unchanged); reactivate from the edit page |
+
+The product edit page only touches the scalar fields (title, description, base
+price, stock, visibility): mockups and printable areas still need the wizard or
+the admin, because they must be checked visually. Saving sends the staff member
+back to `/shop/`, and a hidden product shows the **Hidden** badge instead of the
+"View product" link.
+
+All staff pages share `static/css/staff.css`, are gated with `login_required` +
+`is_staff` (a signed-in customer gets a 403, an anonymous visitor the login page)
+and link back to the hub. The catalogue loads the same stylesheet only for staff
+accounts, for the toolbar on the cards.
 
 ---
 
@@ -540,6 +705,14 @@ stay visually aligned.
 - `static/css/product-wizard.css`: wizard layout, stepper, face tabs,
   checkerboard stage, printable rectangle and handles, review cards, responsive
   rules and reduced-motion support.
+- `static/css/staff.css`: staff-only pages (`/staff/`, `/promotions/`,
+  `/shop/<slug>/edit/`) and the staff toolbar on `/shop/` (loaded for staff
+  accounts only): page header, stat cards, action cards, catalogue/tables, status
+  badges, filters and the inline formset rows. Shipped as a separate file with
+  the same palette as `style.css`, so the storefront never downloads it.
+- `static/js/promotion-formset.js`: add/remove rows of the promotion ladder
+  (clones `tier_formset.empty_form`, ticks the `DELETE` checkbox of a saved
+  break, empties a fresh row so the formset ignores it).
 - `templates/base.html`: SEO/Open Graph meta blocks, JSON-LD structured data,
   Bootstrap + Bootstrap Icons + Google Fonts, and a `{% block extra_css %}` /
   `{% block extra_js %}` extension point.
@@ -559,10 +732,11 @@ its own markup:
 
 | App | Templates |
 | --- | --- |
-| `home` | `home/templates/home/index.html` |
-| `products` | `products/templates/products/list.html`, `products/templates/products/create_product.html` and `products/templates/products/partials/face_form.html` |
+| `home` | `home/templates/home/index.html` and `home/templates/home/staff_dashboard.html` |
+| `products` | `products/templates/products/list.html`, `products/templates/products/create_product.html`, `products/templates/products/edit_product.html` and `products/templates/products/partials/face_form.html` |
+| `promotions` | `promotions/templates/promotions/list.html`, `create.html`, `detail.html`, `_form.html` and `_tier_row.html` |
 | `cart` | `cart/templates/cart/detail.html` |
-| `orders` | `orders/templates/orders/list.html` |
+| `orders` | `orders/templates/orders/list.html` and `orders/templates/orders/checkout.html` |
 | `customization` | `customization/templates/customization/*.html` |
 | `accounts` | `accounts/templates/accounts/*.html` and `accounts/templates/account/*.html` |
 
@@ -582,8 +756,9 @@ Reusable partials:
   not start with a dark hero section) and marks the active link with
   `request.resolver_match.app_name`. The streamlined nav keeps Home and
   Products as text links, adds How it works / File guide section links and shows
-  Customizations only to authenticated users plus a staff-only Create product
-  shortcut. The cart is an icon-only link whose item count is displayed as a
+  Customizations only to authenticated users plus a staff-only **Staff tools**
+  shortcut (`/staff/`, styled with `.nav-staff-link`). The cart is an icon-only
+  link whose item count is displayed as a
   floating badge (hidden when the cart is empty). The account icon always opens
   a Bootstrap dropdown: signed-out visitors get a compact sign-in form posting
   to `account_login` and a "Sign up" shortcut that preserves `next`; signed-in
@@ -624,6 +799,13 @@ Recommended best practices for the next step:
 - log request IDs, payment intent IDs and order IDs for traceability;
 - implement retry-safe webhook handlers (at-least-once delivery model).
 
+The order and stock models are already shaped for it (see
+[Ready for Stripe](#ready-for-stripe)): a payment intent id field, a separate
+`payment_status`, the `stock_state` cycle and a `total_amount`/`currency`
+snapshot that must be sent to Stripe as the authoritative amount. The webhook
+only has to call `commit_stock()` (paid), `release_stock()` (failed/refunded) and
+set `payment_status`; it never touches prices.
+
 ---
 
 ## Testing
@@ -635,6 +817,7 @@ Run the product-focused suite first, then the full project suite and deployment 
 ```bash
 python manage.py test products
 python manage.py test promotions
+python manage.py test orders
 python manage.py test
 python manage.py check
 python manage.py makemigrations --check --dry-run
@@ -671,7 +854,12 @@ The product suite covers:
 - staff-only soft deletion: the POST flips `is_active`, hides the product from
   the catalogue and editor while preserving its sides, print areas and projects,
   treats a repeat request as idempotent and rejects anonymous, non-staff and
-  non-POST requests.
+  non-POST requests;
+- the staff product edit page (title, description, price, stock and visibility
+  updated, invalid data leaving the stored product untouched, the promotion card
+  linking to its promotion or to the prefilled create form, `403` for customers,
+  login redirect for anonymous visitors and `404` for an unknown slug);
+- `Product.available_quantity` (stock minus holds) and `is_out_of_stock`.
 
 The `customization` suite covers upload limits and formats, EXIF orientation,
 the single-image-per-side JSON payload, transform clamping inside the print
@@ -702,6 +890,32 @@ summary keys and the cart page ("You save", struck-through gross total), the
 `/shop/` and `/` badges, the staff-only Admin pages (creating a promotion with its
 breaks, rejecting an empty or non-saving ladder, the read-only inline on the
 product page) and the query counts (three for the cart, two per catalogue page).
+The staff pages are covered too: login redirects and `403` for customers, the
+searchable/filterable list, creating a promotion with its ladder, the `?product=`
+prefill, a non-saving and an empty ladder both rejected, editing one break while
+deleting another, the delete modal and the POST-only delete.
+
+The `orders` suite covers the checkout page (cart summary, prefilled address),
+placing an order (total snapshot, `paid`/`committed`, stock decremented, cart
+emptied), promotions changing the price but not the units (7 units → EUR 60, 3
+left on the shelf), two cart lines of the same product merged into one `CartItem`,
+insufficient stock rolling the whole checkout back (no order, no stock movement,
+no orphan address), empty carts and unpublished products, the required shipping
+address, the login redirect for anonymous visitors, the order history, and the
+reserve/commit/release cycle: idempotent reserve and commit, `available_quantity`
+dropping while a hold exists, a full hold blocking the last units, commit without
+a hold, release giving the units back, and the `expire_stock_holds` command
+(releasing expired holds, marking the unpaid order failed, `--dry-run` and holds
+still inside their window).
+
+The `home` suite also covers the staff hub: login redirect and `403`, the five
+overview counters, the latest five promotions, the seven links of the four action
+cards and the absence of any table or write action (those moved to `/shop/`). The
+`products` suite covers the staff shortcuts on the catalogue: the edit/promotion/
+hide actions and the held units (staff only), the hidden-products toggle
+(`?status=hidden` for staff, ignored for customers and anonymous visitors), the
+hidden badge and missing customer call to action, the page links keeping the
+filter and a constant query count per page.
 
 ### Manual QA: product wizard
 
@@ -798,13 +1012,69 @@ Use a staff account and open `/shop/create/`:
      **Generate print file**) and unzip the stored archive: one PNG per side,
      named after the side, at the mockup resolution.
 
+### Manual QA: staff tools, promotions and checkout
+
+1. **Staff hub (`/staff/`)**
+   - Sign in as staff: the navbar pill reads **Staff tools** and opens `/staff/`;
+     the footer link and the home hero button point to the same page.
+   - The **Overview** row matches the database (products, published, out of stock,
+     active/total promotions, orders) and lists the five most recently updated
+     promotions; the page contains no form and no product table.
+   - The **Actions** row shows four cards; each button opens its page (the
+     catalogue, the wizard, the promotion manager, the admin order/product lists,
+     the admin index).
+   - On `/shop/` every card carries the staff toolbar: the stock line matches the
+     shelf quantity and the held units, the title and **Edit** open the edit page,
+     **Hide** removes the product from the shop and `/staff/` + `/shop/` counters
+     drop by one.
+   - Add a product, open **Show hidden products (1)** on `/shop/`: the deactivated
+     card is listed with the **Hidden** badge, no "Add without customization"
+     button and no **Hide** button, and **Show published products** goes back.
+     More than `PRODUCTS_PAGE_SIZE` hidden products keep `?status=hidden` in the
+     page links.
+   - Sign out (or sign in as a customer) and open `/shop/?status=hidden`: the
+     hidden products are not listed and the toggle is gone.
+   - A product without a promotion shows **Add a promotion**, which opens
+     `/promotions/create/?product=<id>` with the product and a
+     "`<title>` bundle" name already filled in.
+2. **Promotion manager (`/promotions/`)**
+   - Search by promotion or product name and switch the status filter; **Clear**
+     resets both.
+   - Create a ladder (5 → 40.00, 10 → 70.00), press **Add a break** to get an
+     extra row, then save: `/shop/` and `/` show the new badge and `/cart/` uses
+     the break.
+   - Try to save a break that is not a saving (e.g. 5 → 60.00 on a EUR 10
+     product) and an empty ladder: both stay on the page with a readable error
+     and nothing is stored.
+   - Edit the price of one break, delete another with the trash button and save;
+     the saved ladder card shows the new unit price and the saving percentage.
+   - Delete the promotion from the modal: the ladder disappears and the product
+     is back to its base price on the catalogue, the product page and the cart.
+   - As a signed-in customer, the same URLs return `403`; signed out they redirect
+     to the login page.
+3. **Checkout**
+   - Add 7 units of a product with a 5-for-40 ladder: `/cart/` shows the discount,
+     **Checkout** opens `/orders/checkout/` with the same total (EUR 60 for a EUR
+     10 base price) and the last shipping address prefilled.
+   - Place the order: `/orders/` lists it with its units, total and payment
+     status, the cart is empty and the catalogue availability dropped by 7 (not
+     by 5).
+   - Put more units in the cart than are available (`stock_quantity`) and place
+     the order: the page comes back with "Only N of … can be ordered right now",
+     no order is created and the stock is unchanged.
+   - With a product held by a reserved order
+     (`Product.objects.filter(pk=…).update(reserved_quantity=…)` in the shell),
+     the catalogue shows the reduced availability and adding the last units fails
+     with **Not enough stock**.
+
 
 ---
 
 ## Roadmap
 
 - Add Django Ninja API app and payment endpoints.
-- Integrate Stripe checkout and webhook pipeline.
+- Integrate Stripe checkout and webhook pipeline (the stock cycle is ready: see
+  [Ready for Stripe](#ready-for-stripe)).
 - Add shipment tracking integration.
 - Add a customer-facing order detail page with print-file download.
 

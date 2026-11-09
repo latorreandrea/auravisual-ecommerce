@@ -1,0 +1,96 @@
+{% comment %}
+Shared promotion form: the promotion itself plus its ladder of price breaks.
+
+Included by promotions/create.html and promotions/detail.html. The breaking rules
+are validated by promotions.forms.PromotionTierFormSet, so the same data is
+accepted here and in the Django admin.
+{% endcomment %}
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="staff-card">
+            <h3 class="staff-card-title">Promotion</h3>
+
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger py-2" role="alert">
+                {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+                {{ form.name }}
+                <p class="form-text mb-0">{{ form.name.help_text }}</p>
+                {% for error in form.name.errors %}
+                <p class="text-danger small mb-0">{{ error }}</p>
+                {% endfor %}
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="{{ form.product.id_for_label }}">{{ form.product.label }}</label>
+                {{ form.product }}
+                <p class="form-text mb-0">{{ form.product.help_text }}</p>
+                {% for error in form.product.errors %}
+                <p class="text-danger small mb-0">{{ error }}</p>
+                {% endfor %}
+                <p class="form-text mb-0">
+                    Each product has one promotion: choose a product without one, or edit the
+                    promotion it already has.
+                </p>
+            </div>
+
+            <div class="form-check">
+                {{ form.is_active }}
+                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                    {{ form.is_active.label }}
+                </label>
+                <p class="form-text mb-0">{{ form.is_active.help_text }}</p>
+                {% for error in form.is_active.errors %}
+                <p class="text-danger small mb-0">{{ error }}</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="staff-card" data-tier-formset>
+            <h3 class="staff-card-title">Price breaks</h3>
+            <p class="small text-muted">
+                One row per quantity: &ldquo;5&rdquo; and &ldquo;40.00&rdquo; means five units for
+                &euro; 40.00 in total. Units above the highest break stay at the base price.
+            </p>
+
+            {{ tier_formset.management_form }}
+
+            {% if tier_formset.non_form_errors %}
+            <div class="alert alert-danger py-2" role="alert">
+                {% for error in tier_formset.non_form_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="table-responsive">
+                <table class="table staff-table staff-table-formset align-middle mb-2">
+                    <thead>
+                        <tr>
+                            <th scope="col">Units</th>
+                            <th scope="col">Total price (EUR)</th>
+                            <th scope="col" class="text-end"><span class="visually-hidden">Remove</span></th>
+                        </tr>
+                    </thead>
+                    <tbody data-tier-rows>
+                        {% for tier_form in tier_formset %}
+                        {% include "promotions/_tier_row.html" with tier_form=tier_form %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <template id="tier-row-template">
+                {% include "promotions/_tier_row.html" with tier_form=tier_formset.empty_form %}
+            </template>
+
+            <button type="button" class="btn btn-outline-secondary" data-tier-add>
+                <i class="bi bi-plus-lg me-2"></i>Add a break
+            </button>
+        </div>
+    </div>
+</div>

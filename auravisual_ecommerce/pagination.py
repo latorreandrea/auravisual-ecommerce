@@ -2,11 +2,25 @@
 
 Both views paginate at the database level (``LIMIT``/``OFFSET`` plus a single
 ``COUNT``) so a growing table never turns into a full scan per request. The
-template only needs ``page_obj``, ``page_links`` and ``is_paginated``, which the
-``partials/pagination.html`` partial renders.
+template needs ``page_obj``, ``page_links``, ``is_paginated`` and
+``pagination_query``, which the ``partials/pagination.html`` partial renders.
 """
 
 from django.core.paginator import Paginator
+
+
+def _pagination_query(request):
+    """Return the filters of the current request, ready to prefix a page link.
+
+    The catalogue adds ``?status=`` for staff, so every page link has to keep the
+    active filters; without filters this returns an empty string and the links
+    stay a plain ``?page=N``.
+    """
+
+    params = request.GET.copy()
+    params.pop("page", None)
+    query = params.urlencode()
+    return f"{query}&" if query else ""
 
 
 def paginate(request, queryset, per_page):
@@ -46,4 +60,5 @@ def paginate(request, queryset, per_page):
         "page_obj": page_obj,
         "page_links": page_links,
         "is_paginated": paginator.num_pages > 1,
+        "pagination_query": _pagination_query(request),
     }

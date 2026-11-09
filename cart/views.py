@@ -51,7 +51,7 @@ def add_to_cart(request, product_id):
         for line in session_cart.values()
         if line["product_id"] == product.pk
     )
-    if current_qty + 1 > product.stock_quantity:
+    if current_qty + 1 > product.available_quantity:
         messages.error(request, f"Not enough stock for {product.title}.")
         return redirect("products:list")
 

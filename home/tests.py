@@ -9,7 +9,10 @@ from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.html import Element, parse_html
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -18,6 +21,7 @@ from cart.models import Cart, CartItem
 from customization.models import CustomizationDraft
 from orders.models import Order
 from products.models import Product, ProductView
+from promotions.models import Promotion, PromotionTier
 
 User = get_user_model()
 
@@ -202,7 +206,7 @@ class HomePageTests(TestCase):
         # The hero relies on the badge and the preview only.
         self.assertNotContains(response, "home-hero-product-meta")
 
-    def test_staff_home_exposes_the_product_creation_shortcut(self):
+    def test_staff_home_exposes_the_staff_tools_shortcut(self):
         staff = User.objects.create_user(
             username="staff",
             password="s3cret-pass",
@@ -213,7 +217,16 @@ class HomePageTests(TestCase):
         response = self.client.get(reverse("home:index"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, f'href="{reverse("products:create")}"')
+        self.assertContains(response, f'href="{reverse("home:staff")}"')
+        self.assertContains(response, "Staff tools")
+
+    def test_customers_do_not_see_the_staff_shortcut(self):
+        user = User.objects.create_user(username="customer", password="s3cret-pass")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("home:index"))
+
+        self.assertNotContains(response, f'href="{reverse("home:staff")}"')
 
     def test_authenticated_home_suggests_products_from_the_latest_order(self):
         user = User.objects.create_user(username="returning", password="s3cret-pass")
@@ -481,3 +494,201 @@ class HomeCardPreviewTests(TestCase):
         product = self._product_from_response(response)
         self.assertEqual(product.card_layers, [])
         self.assertEqual(product.card_mockup_url, self.view.mockup_image.url)
+
+
+class StaffDashboardTests(TestCase):
+    """The /staff/ hub that replaced the navbar "Create product" link."""
+
+    def _elements_with_class(self, node, css_class, found=None):
+        """Collect every element carrying ``css_class``, at any depth."""
+
+        found = [] if found is None else found
+        for child in getattr(node, "children", []):
+            if not isinstance(child, Element):
+                continue
+            classes = dict(child.attributes).get("class", "").split()
+            if css_class in classes:
+                found.append(child)
+            self._elements_with_class(child, css_class, found)
+        return found
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="staff",
+            password="s3cret-pass",
+            is_staff=True,
+        )
+        self.customer = User.objects.create_user(
+            username="customer",
+            password="s3cret-pass",
+        )
+        self.product = Product.objects.create(
+            title="NFC business card",
+            base_price=Decimal("39.00"),
+            stock_quantity=12,
+        )
+        self.promotion = Promotion.objects.create(
+            name="Business card bundle",
+            product=self.product,
+        )
+        PromotionTier.objects.create(
+            promotion=self.promotion,
+            quantity=5,
+            price=Decimal("150.00"),
+        )
+
+    def test_anonymous_visitors_are_sent_to_the_login_page(self):
+        response = self.client.get(reverse("home:staff"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("account_login"), response["Location"])
+
+    def test_customers_are_refused(self):
+        self.client.force_login(self.customer)
+
+        response = self.client.get(reverse("home:staff"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_each_row_keeps_its_items_inside_its_own_container(self):
+        """Guards the markup bug where the stat grid swallowed the whole page."""
+
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("home:staff"))
+        dom = parse_html(response.content.decode())
+
+        stat_grids = self._elements_with_class(dom, "staff-stats")
+        self.assertEqual(len(stat_grids), 1)
+        self.assertEqual(len(self._elements_with_class(stat_grids[0], "staff-stat")), 5)
+
+        action_grids = self._elements_with_class(dom, "staff-action-grid")
+        self.assertEqual(len(action_grids), 1)
+        self.assertEqual(
+            len(self._elements_with_class(action_grids[0], "staff-action-card")),
+            4,
+        )
+
+    def test_the_overview_row_counts_the_shop(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("home:staff"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Shop overview")
+        self.assertContains(response, 'id="staff-overview-title"')
+        self.assertEqual(response.context["product_count"], 1)
+        self.assertEqual(response.context["active_product_count"], 1)
+        self.assertEqual(response.context["promotion_count"], 1)
+        self.assertEqual(response.context["active_promotion_count"], 1)
+        self.assertEqual(response.context["order_count"], 0)
+        labels = (
+            "Products",
+            "Published",
+            "Out of stock",
+            "Active promotions",
+            "Orders",
+        )
+        for label in labels:
+            self.assertContains(response, label)
+
+    def test_the_overview_row_shows_the_latest_promotions(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("home:staff"))
+
+        self.assertContains(response, "Latest promotions")
+        self.assertContains(response, "Business card bundle")
+        self.assertContains(
+            response,
+            reverse("promotions:detail", args=[self.promotion.pk]),
+        )
+
+    def test_the_action_row_links_to_the_pages_that_own_the_data(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("home:staff"))
+
+        self.assertContains(response, 'id="staff-actions-title"')
+        for heading in ("Products", "Promotions", "Orders", "Site admin"):
+            self.assertContains(response, heading)
+        for url in (
+            reverse("products:list"),
+            reverse("products:create"),
+            reverse("promotions:list"),
+            reverse("promotions:create"),
+            reverse("admin:orders_order_changelist"),
+            reverse("admin:products_product_changelist"),
+            reverse("admin:index"),
+        ):
+            self.assertContains(response, f'href="{url}"')
+
+    def test_the_dashboard_is_read_only(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("home:staff"))
+
+        # No catalogue table and no write action: those moved to /shop/.
+        self.assertNotContains(response, "<table")
+        self.assertNotContains(
+            response,
+            reverse("products:edit", args=[self.product.slug]),
+        )
+        self.assertNotContains(
+            response,
+            reverse("products:deactivate", args=[self.product.slug]),
+        )
+
+    def test_out_of_stock_products_are_counted(self):
+        Product.objects.create(
+            title="Sold out card",
+            base_price=Decimal("10.00"),
+            stock_quantity=0,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("home:staff"))
+
+        self.assertEqual(response.context["out_of_stock_count"], 1)
+        self.assertContains(response, "Out of stock")
+
+    def test_only_the_latest_five_promotions_are_listed(self):
+        for index in range(6):
+            product = Product.objects.create(
+                title=f"Bundle product {index}",
+                base_price=Decimal("10.00"),
+                stock_quantity=5,
+            )
+            Promotion.objects.create(name=f"Bundle {index}", product=product)
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("home:staff"))
+
+        self.assertEqual(len(response.context["recent_promotions"]), 5)
+
+    def _dashboard_query_count(self):
+        with CaptureQueriesContext(connection) as captured:
+            self.client.get(reverse("home:staff"))
+        return len(captured)
+
+    def test_the_overview_does_not_query_per_product(self):
+        self.client.force_login(self.staff)
+        baseline = self._dashboard_query_count()
+
+        for index in range(5):
+            product = Product.objects.create(
+                title=f"Extra product {index}",
+                base_price=Decimal("10.00"),
+                stock_quantity=5,
+            )
+            promotion = Promotion.objects.create(
+                name=f"Extra bundle {index}",
+                product=product,
+            )
+            PromotionTier.objects.create(
+                promotion=promotion,
+                quantity=2,
+                price=Decimal("15.00"),
+            )
+
+        self.assertEqual(self._dashboard_query_count(), baseline)

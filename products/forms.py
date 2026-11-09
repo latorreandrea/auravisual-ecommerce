@@ -67,6 +67,31 @@ class ProductCreateForm(BootstrapFormMixin, forms.ModelForm):
         }
 
 
+class ProductEditForm(ProductCreateForm):
+    """Edit the scalar product fields from the staff hub.
+
+    The sides (mockups and print areas) are created by the wizard and keep being
+    managed from the Django admin, so this form never touches them.
+    """
+
+    class Meta(ProductCreateForm.Meta):
+        labels = {
+            **ProductCreateForm.Meta.labels,
+            "stock_quantity": "Stock quantity (physical units)",
+        }
+        help_texts = {
+            **ProductCreateForm.Meta.help_texts,
+            "base_price": (
+                "Price of a single unit. Promotions are validated against it, so "
+                "changing it can invalidate an existing ladder."
+            ),
+            "stock_quantity": (
+                "Units on the shelf. Units held by orders waiting for payment are "
+                "subtracted automatically."
+            ),
+        }
+
+
 class ProductViewForm(MockupImageFormMixin, BootstrapFormMixin, forms.ModelForm):
     """One product side, created together with the product itself."""
 

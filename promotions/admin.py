@@ -1,40 +1,7 @@
-from django import forms
 from django.contrib import admin
-from django.forms.models import BaseInlineFormSet
 
+from .forms import PromotionTierForm, PromotionTierFormSet
 from .models import Promotion, PromotionTier
-
-
-class PromotionTierForm(forms.ModelForm):
-    class Meta:
-        model = PromotionTier
-        fields = ("quantity", "price")
-        labels = {"quantity": "Units", "price": "Total price (EUR)"}
-
-
-class PromotionTierFormSet(BaseInlineFormSet):
-    """Validate the whole ladder, because a break depends on its siblings.
-
-    ``min_num`` alone is not enforced by the admin, and the checks that compare
-    breaks with each other cannot live on a single form, so both live here.
-    """
-
-    def clean(self):
-        super().clean()
-        if any(self.errors):
-            return
-        pairs = []
-        for form in self.forms:
-            data = form.cleaned_data
-            if not data or data.get("DELETE"):
-                continue
-            pairs.append((data.get("quantity"), data.get("price")))
-        promotion = self.instance
-        product = getattr(promotion, "product", None)
-        if product is None:
-            # The main form already reports the missing product.
-            return
-        promotion.validate_tiers(pairs, product.base_price)
 
 
 class PromotionTierInline(admin.TabularInline):

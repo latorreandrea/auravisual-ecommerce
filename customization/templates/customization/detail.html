@@ -33,7 +33,7 @@
                     <form action="{% url 'cart:add' draft.product_id %}" method="post" class="mb-0">
                         {% csrf_token %}
                         <input type="hidden" name="draft_id" value="{{ draft.pk }}">
-                        <button type="submit" class="btn btn-outline-secondary"{% if draft.product.stock_quantity < 1 %} disabled{% endif %}>
+                        <button type="submit" class="btn btn-outline-secondary"{% if draft.product.is_out_of_stock %} disabled{% endif %}>
                             <i class="bi bi-cart-plus me-2"></i>Add to cart
                         </button>
                     </form>

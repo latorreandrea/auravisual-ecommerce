@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Promotions | Staff tools | AuraVisual Ecommerce{% endblock %}
+{% block meta_description %}Staff page to manage the quantity price promotions.{% endblock %}
+
+{% block extra_css %}
+<link href="{% static 'css/staff.css' %}?v={{ ASSET_VERSION }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<section class="staff-page">
+    <header class="staff-header">
+        <div>
+            <p class="staff-eyebrow">Staff tools</p>
+            <h2>Promotions</h2>
+            <p>Quantity price breaks, shown in the catalogue, on the product pages and in the cart.</p>
+        </div>
+        <div class="staff-actions">
+            <a href="{% url 'home:staff' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-2"></i>Staff tools
+            </a>
+            <a href="{% url 'promotions:create' %}" class="btn-get-started">
+                <i class="bi bi-plus-circle me-2"></i>New promotion
+            </a>
+        </div>
+    </header>
+
+    <div class="staff-stats">
+        <div class="staff-stat">
+            <span class="staff-stat-value">{{ total_promotions }}</span>
+            <span class="staff-stat-label">Promotions</span>
+        </div>
+        <div class="staff-stat">
+            <span class="staff-stat-value">{{ active_promotions }}</span>
+            <span class="staff-stat-label">Active</span>
+        </div>
+        <div class="staff-stat">
+            <span class="staff-stat-value">{{ promotions|length }}</span>
+            <span class="staff-stat-label">In this view</span>
+        </div>
+    </div>
+
+    <form method="get" class="staff-filters" role="search">
+        <label class="visually-hidden" for="promotion-search">Search promotions</label>
+        <input type="search" id="promotion-search" name="q" value="{{ query }}"
+               class="form-control" placeholder="Search by promotion or product">
+        <label class="visually-hidden" for="promotion-status">Status</label>
+        <select id="promotion-status" name="status" class="form-select">
+            {% for value, label in status_choices %}
+            <option value="{{ value }}"{% if value == status %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-outline-secondary">
+            <i class="bi bi-funnel me-2"></i>Filter
+        </button>
+        {% if query or status != "all" %}
+        <a href="{% url 'promotions:list' %}" class="btn btn-link">Clear</a>
+        {% endif %}
+    </form>
+
+    {% if promotions %}
+    <div class="staff-card p-0">
+        <div class="table-responsive">
+            <table class="table staff-table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col">Promotion</th>
+                        <th scope="col">Product</th>
+                        <th scope="col">Price breaks</th>
+                        <th scope="col">Best unit price</th>
+                        <th scope="col">Status</th>
+                        <th scope="col" class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for promotion in promotions %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'promotions:detail' promotion.pk %}">{{ promotion.name }}</a>
+                            <span class="d-block small text-muted">Updated {{ promotion.updated_at|date:"d/m/Y H:i" }}</span>
+                        </td>
+                        <td>
+                            {{ promotion.product.title }}
+                            <span class="d-block small text-muted">Base &euro; {{ promotion.product.base_price }}</span>
+                        </td>
+                        <td class="small">{{ promotion.tiers_summary|default:"No breaks yet" }}</td>
+                        <td class="small">
+                            {% if promotion.best_tier %}
+                            &euro; {{ promotion.best_tier.unit_price }}
+                            <span class="d-block text-muted">{{ promotion.best_tier.quantity }} units for &euro; {{ promotion.best_tier.price }}</span>
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td>
+                            <span class="staff-badge {% if promotion.is_active %}staff-badge-active{% else %}staff-badge-inactive{% endif %}">
+                                {{ promotion.is_active|yesno:"Active,Inactive" }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'promotions:detail' promotion.pk %}" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-pencil-square" aria-hidden="true"></i>
+                                <span class="visually-hidden">Edit {{ promotion.name }}</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="staff-card staff-empty">
+        {% if query or status != "all" %}
+        <p class="mb-3">No promotion matches this filter.</p>
+        <a href="{% url 'promotions:list' %}" class="btn btn-outline-secondary">Show all promotions</a>
+        {% else %}
+        <p class="mb-3">No promotion yet: every product sells at its base price.</p>
+        <a href="{% url 'promotions:create' %}" class="btn-get-started">
+            <i class="bi bi-plus-circle me-2"></i>Create the first promotion
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
